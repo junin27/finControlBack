@@ -1,6 +1,7 @@
 package fincontrol.com.fincontrol.controller;
 
 import fincontrol.com.fincontrol.dto.CategoryDto;
+import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.Category;
 import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.service.CategoryService;
@@ -18,14 +19,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Tag(name = "Categorias", description = "Gerenciamento de categorias do usuário")
 @RestController
 @RequestMapping("/api/categories")
-@Tag(name = "Categorias", description = "Gerenciamento de categorias do usuário")
 public class CategoryController {
 
     private final CategoryService categoryService;
@@ -46,12 +48,13 @@ public class CategoryController {
             @AuthenticationPrincipal String userEmail
     ) {
         User u = userService.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuário não encontrado com email " + userEmail));
         UUID userId = u.getId();
 
         return categoryService.findByUserId(userId)
                 .stream()
-                .map(cat -> new CategoryDto(cat.getId(), cat.getDescription()))
+                .map(this::toDto)
                 .collect(Collectors.toList());
     }
 
@@ -66,25 +69,21 @@ public class CategoryController {
             @Parameter(description = "ID da categoria", required = true,
                     example = "7fa85f64-1234-4562-b3fc-2c963f66afa6")
             @PathVariable UUID id,
-
             @Parameter(hidden = true)
             @AuthenticationPrincipal String userEmail
     ) {
         User u = userService.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuário não encontrado com email " + userEmail));
         UUID userId = u.getId();
 
-        return categoryService.findByIdAndUserId(id, userId)
-                .map(cat -> new CategoryDto(cat.getId(), cat.getDescription()))
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        Category cat = categoryService.getByIdAndUserId(id, userId);
+        return ResponseEntity.ok(toDto(cat));
     }
 
     @Operation(summary = "Cria uma nova categoria para o usuário autenticado")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Categoria criada com sucesso",
-                    content = @Content(schema = @Schema(implementation = CategoryDto.class)))
-    })
+    @ApiResponse(responseCode = "201", description = "Categoria criada com sucesso",
+            content = @Content(schema = @Schema(implementation = CategoryDto.class)))
     @PostMapping
     public ResponseEntity<CategoryDto> create(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
@@ -92,13 +91,13 @@ public class CategoryController {
                     required = true,
                     content = @Content(schema = @Schema(implementation = CategoryDto.class))
             )
-            @RequestBody CategoryDto dto,
-
+            @Valid @RequestBody CategoryDto dto,
             @Parameter(hidden = true)
             @AuthenticationPrincipal String userEmail
     ) {
         User u = userService.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuário não encontrado com email " + userEmail));
         UUID userId = u.getId();
 
         Category toSave = new Category();
@@ -106,7 +105,7 @@ public class CategoryController {
         toSave.setDescription(dto.getDescription());
 
         Category saved = categoryService.save(toSave);
-        CategoryDto result = new CategoryDto(saved.getId(), saved.getDescription());
+        CategoryDto result = toDto(saved);
 
         URI location = URI.create("/api/categories/" + saved.getId());
         return ResponseEntity.created(location).body(result);
@@ -123,25 +122,22 @@ public class CategoryController {
             @Parameter(description = "ID da categoria a atualizar", required = true,
                     example = "7fa85f64-1234-4562-b3fc-2c963f66afa6")
             @PathVariable UUID id,
-
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Nova descrição da categoria",
                     required = true,
                     content = @Content(schema = @Schema(implementation = CategoryDto.class))
             )
-            @RequestBody CategoryDto dto,
-
+            @Valid @RequestBody CategoryDto dto,
             @Parameter(hidden = true)
             @AuthenticationPrincipal String userEmail
     ) {
         User u = userService.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuário não encontrado com email " + userEmail));
         UUID userId = u.getId();
 
-        return categoryService.updateDescription(id, userId, dto.getDescription())
-                .map(updated -> new CategoryDto(updated.getId(), updated.getDescription()))
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        Category updated = categoryService.updateDescription(id, userId, dto.getDescription());
+        return ResponseEntity.ok(toDto(updated));
     }
 
     @Operation(summary = "Remove uma categoria por ID")
@@ -154,17 +150,25 @@ public class CategoryController {
             @Parameter(description = "ID da categoria a remover", required = true,
                     example = "7fa85f64-1234-4562-b3fc-2c963f66afa6")
             @PathVariable UUID id,
-
             @Parameter(hidden = true)
             @AuthenticationPrincipal String userEmail
     ) {
         User u = userService.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuário não encontrado com email " + userEmail));
         UUID userId = u.getId();
 
-        boolean deleted = categoryService.deleteByIdAndUserId(id, userId);
-        return deleted
-                ? ResponseEntity.noContent().build()
-                : ResponseEntity.notFound().build();
+        categoryService.deleteByIdAndUserId(id, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private CategoryDto toDto(Category c) {
+        return new CategoryDto(
+                c.getId(),
+                c.getUserId(),
+                c.getDescription(),
+                c.getCreatedAt(),
+                c.getUpdatedAt()
+        );
     }
 }
