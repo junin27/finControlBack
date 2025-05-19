@@ -1,44 +1,46 @@
 package fincontrol.com.fincontrol.service;
 
+import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.Category;
 import fincontrol.com.fincontrol.repository.CategoryRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class CategoryService {
 
-    private final CategoryRepository categoryRepository;
+    private final CategoryRepository repo;
 
-    public CategoryService(CategoryRepository categoryRepository) {
-        this.categoryRepository = categoryRepository;
+    public CategoryService(CategoryRepository repo) {
+        this.repo = repo;
     }
 
     public List<Category> findByUserId(UUID userId) {
-        return categoryRepository.findAllByUserId(userId);
+        return repo.findAllByUserId(userId);
     }
 
-    public Optional<Category> findByIdAndUserId(UUID id, UUID userId) {
-        return categoryRepository.findByIdAndUserId(id, userId);
+    public Category getByIdAndUserId(UUID id, UUID userId) {
+        return repo.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Categoria não encontrada com ID " + id));
     }
 
     public Category save(Category category) {
-        return categoryRepository.save(category);
+        return repo.save(category);
     }
 
-    public Optional<Category> updateDescription(UUID id, UUID userId, String newDesc) {
-        return categoryRepository.findByIdAndUserId(id, userId)
-                .map(cat -> {
-                    cat.setDescription(newDesc);
-                    return categoryRepository.save(cat);
-                });
+    public Category updateDescription(UUID id, UUID userId, String newDescription) {
+        Category cat = getByIdAndUserId(id, userId);
+        cat.setDescription(newDescription);
+        return repo.save(cat);
     }
 
-    public boolean deleteByIdAndUserId(UUID id, UUID userId) {
-        long removed = categoryRepository.deleteByIdAndUserId(id, userId);
-        return removed > 0;
+    public void deleteByIdAndUserId(UUID id, UUID userId) {
+        long removed = repo.deleteByIdAndUserId(id, userId);
+        if (removed == 0) {
+            throw new ResourceNotFoundException("Categoria não encontrada com ID " + id);
+        }
     }
 }
