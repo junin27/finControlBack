@@ -1,5 +1,5 @@
 # === Stage 1: Build com Maven ===
-FROM maven:3.8.6-openjdk-17 AS builder
+FROM maven:3.8.6-jdk-17 AS builder
 
 # Cria pasta de trabalho e copia apenas o pom + fontes
 WORKDIR /app
