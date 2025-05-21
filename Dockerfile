@@ -9,5 +9,8 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jdk-alpine
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
-ENV JAVA_TOOL_OPTIONS="-Dserver.port=${PORT:-8080}"
+
+# Força uso de IPv4 e porta do Render
+ENV JAVA_TOOL_OPTIONS="-Dserver.port=${PORT:-8080} -Djava.net.preferIPv4Stack=true"
+
 ENTRYPOINT ["java","-jar","app.jar"]
