@@ -1,14 +1,16 @@
 package fincontrol.com.fincontrol.security;
 
+import fincontrol.com.fincontrol.security.JWTAuthenticationFilter;
+import fincontrol.com.fincontrol.security.JwtTokenProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -28,19 +30,24 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        // libera endpoints de documentação
+                        // libera endpoints de documentação Swagger/OpenAPI
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/swagger-ui/index.html"
                         ).permitAll()
-                        // suas rotas de auth
+
+                        // libera rotas de autenticação
                         .requestMatchers("/auth/**").permitAll()
-                        // todo o resto requer autenticação
+
+                        // libera root e ping sem autenticação
+                        .requestMatchers("/", "/ping").permitAll()
+
+                        // todo o resto exige JWT
                         .anyRequest().authenticated()
                 )
-                // filtro JWT antes do UsernamePasswordAuthenticationFilter
+                // aplica o filtro JWT antes do filtro de username/password
                 .addFilterBefore(jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class);
 
