@@ -59,16 +59,17 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(List.of("*"));      // libera qualquer origem
-        cfg.setAllowedMethods(List.of("*"));      // libera todos os métodos (GET, POST…)
-        cfg.setAllowedHeaders(List.of("*"));      // libera todos os headers
-        cfg.setAllowCredentials(true);            // permite credenciais, se usar cookies/jwt em header
-
+        // em vez de allowedOrigins("*"):
+        cfg.setAllowedOriginPatterns(List.of("*"));
+        cfg.setAllowedMethods(List.of("*"));
+        cfg.setAllowedHeaders(List.of("*"));
+        cfg.setAllowCredentials(true);
+    
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);
         return source;
     }
-
+    
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
