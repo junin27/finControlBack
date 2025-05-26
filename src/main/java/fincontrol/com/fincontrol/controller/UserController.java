@@ -38,7 +38,14 @@ public class UserController {
     public List<UserDto> listAll() {
         return userService.findAll()
                 .stream()
-                .map(u -> new UserDto(u.getId(), u.getName(), u.getEmail(), u.getSalary()))
+                .map(u -> new UserDto(
+                        u.getId(),
+                        u.getName(),
+                        u.getEmail(),
+                        u.getSalary(),
+                        u.getCreatedAt(),
+                        u.getUpdatedAt()
+                ))
                 .collect(Collectors.toList());
     }
 
@@ -48,16 +55,22 @@ public class UserController {
                     content = @Content(schema = @Schema(implementation = UserDto.class))),
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado")
     })
+
     @GetMapping("/{id}")
-    public ResponseEntity<UserDto> getById(
-            @Parameter(description = "ID do usuário", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID id
-    ) {
+    public ResponseEntity<UserDto> getById(@PathVariable UUID id) {
         return userService.findById(id)
-                .map(u -> new UserDto(u.getId(), u.getName(), u.getEmail(), u.getSalary()))
+                .map(u -> new UserDto(
+                        u.getId(),
+                        u.getName(),
+                        u.getEmail(),
+                        u.getSalary(),
+                        u.getCreatedAt(),
+                        u.getUpdatedAt()
+                ))
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+
 
     @Operation(summary = "Atualiza dados de um usuário existente")
     @ApiResponses({
@@ -66,26 +79,16 @@ public class UserController {
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado")
     })
     @PutMapping("/{id}")
-    public ResponseEntity<UserDto> update(
-            @Parameter(description = "ID do usuário a ser atualizado", required = true,
-                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID id,
-
-            // Swagger annotation usada com fully-qualified name:
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Campos a serem atualizados",
-                    required = true,
-                    content = @Content(schema = @Schema(implementation = UserUpdateDto.class))
-            )
-            // Spring annotation importada normalmente:
-            @RequestBody UserUpdateDto dto
-    ) {
+    public ResponseEntity<UserDto> update(@PathVariable UUID id,
+                                          @RequestBody UserUpdateDto dto) {
         User updated = userService.update(id, dto);
         UserDto out = new UserDto(
                 updated.getId(),
                 updated.getName(),
                 updated.getEmail(),
-                updated.getSalary()
+                updated.getSalary(),
+                updated.getCreatedAt(),   // 🔥
+                updated.getUpdatedAt()    // 🔥
         );
         return ResponseEntity.ok(out);
     }

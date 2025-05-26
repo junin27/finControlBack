@@ -1,6 +1,5 @@
 name: CI/CD
 
-# Dispara em todo push na main
 on:
   push:
     branches:
@@ -12,10 +11,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Baixa o código
       - uses: actions/checkout@v3
 
-      # 2. Configura Java 17 e cache de dependências
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
@@ -23,13 +20,19 @@ jobs:
           java-version: '17'
           cache: maven
 
-      # 3. Compila e empacota
       - name: Build package
         run: mvn clean package -B
+        env:
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
-      # 4. Roda os testes
       - name: Run tests
         run: mvn test -B
+        env:
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
   deploy:
     name: Trigger Render Deploy
@@ -40,7 +43,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # 5. Dispara o webhook para o Render redeployar
       - name: Trigger Render Deploy Hook
         run: |
           curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
