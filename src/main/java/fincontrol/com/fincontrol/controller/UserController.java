@@ -1,10 +1,11 @@
+// src/main/java/fincontrol/com/fincontrol/controller/UserController.java
 package fincontrol.com.fincontrol.controller;
 
 import fincontrol.com.fincontrol.dto.UserDto;
 import fincontrol.com.fincontrol.dto.UserUpdateDto;
 import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.service.UserService;
-
+import io.micrometer.core.annotation.Timed;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -12,7 +13,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,6 +31,7 @@ public class UserController {
         this.userService = userService;
     }
 
+    @Timed(value = "user.list.time", description = "Tempo para listar todos os usuários")
     @Operation(summary = "Lista todos os usuários")
     @ApiResponse(responseCode = "200", description = "Lista retornada com sucesso",
             content = @Content(schema = @Schema(implementation = UserDto.class)))
@@ -49,15 +50,19 @@ public class UserController {
                 .collect(Collectors.toList());
     }
 
+    @Timed(value = "user.get.time", description = "Tempo para buscar um usuário por ID")
     @Operation(summary = "Busca um usuário por ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Usuário encontrado",
                     content = @Content(schema = @Schema(implementation = UserDto.class))),
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado")
     })
-
     @GetMapping("/{id}")
-    public ResponseEntity<UserDto> getById(@PathVariable UUID id) {
+    public ResponseEntity<UserDto> getById(
+            @Parameter(description = "ID do usuário", required = true,
+                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id
+    ) {
         return userService.findById(id)
                 .map(u -> new UserDto(
                         u.getId(),
@@ -71,7 +76,7 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-
+    @Timed(value = "user.update.time", description = "Tempo para atualizar um usuário")
     @Operation(summary = "Atualiza dados de um usuário existente")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Atualizado com sucesso",
@@ -79,20 +84,30 @@ public class UserController {
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado")
     })
     @PutMapping("/{id}")
-    public ResponseEntity<UserDto> update(@PathVariable UUID id,
-                                          @RequestBody UserUpdateDto dto) {
+    public ResponseEntity<UserDto> update(
+            @Parameter(description = "ID do usuário a ser atualizado", required = true,
+                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Campos a serem atualizados",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = UserUpdateDto.class))
+            )
+            @RequestBody UserUpdateDto dto
+    ) {
         User updated = userService.update(id, dto);
         UserDto out = new UserDto(
                 updated.getId(),
                 updated.getName(),
                 updated.getEmail(),
                 updated.getSalary(),
-                updated.getCreatedAt(),   // 🔥
-                updated.getUpdatedAt()    // 🔥
+                updated.getCreatedAt(),
+                updated.getUpdatedAt()
         );
         return ResponseEntity.ok(out);
     }
 
+    @Timed(value = "user.delete.time", description = "Tempo para remover um usuário")
     @Operation(summary = "Remove um usuário por ID")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Removido com sucesso"),
