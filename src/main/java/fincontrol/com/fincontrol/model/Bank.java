@@ -1,35 +1,51 @@
 package fincontrol.com.fincontrol.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
+@Getter @Setter
 @Entity
+@EntityListeners(AuditingEntityListener.class) // <<<<<<<<<<<<<<<<<
 @Table(name = "banks")
 public class Bank {
-
-    @Id
-    @GeneratedValue
+    @Id @GeneratedValue
     private UUID id;
-
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "user_id")
-    private User user;
 
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal balance;
+    @Column(length = 255)
+    private String description;
 
-    @Column(name = "created_at", columnDefinition = "TIMESTAMP")
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", columnDefinition = "TIMESTAMP")
+    @LastModifiedDate
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    public Bank() {}
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal balance = BigDecimal.ZERO;
 
-    // Getters e setters
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    // relacionamentos com transações existentes:
+    @OneToMany(mappedBy = "bank", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ExtraIncome> incomes;
+
+    @OneToMany(mappedBy = "bank", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Expense> expenses;
+
 }

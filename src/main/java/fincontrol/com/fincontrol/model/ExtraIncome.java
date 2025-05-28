@@ -28,6 +28,11 @@ public class ExtraIncome {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
+    @ManyToOne
+    @JoinColumn(name = "bank_id")
+    private Bank bank;
+
+
     @Column(length = 255)
     private String description;
 
