@@ -15,11 +15,16 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import jakarta.validation.Valid;
+
+import jakarta.validation.Valid; // Ainda pode ser útil para outras validações no DTO
 import java.net.URI;
 import java.util.List;
 import java.util.UUID;
@@ -41,7 +46,7 @@ public class CategoryController {
 
     @Operation(summary = "Lista todas as categorias do usuário autenticado")
     @ApiResponse(responseCode = "200", description = "Lista retornada com sucesso",
-            content = @Content(schema = @Schema(implementation = CategoryDto.class)))
+            content = @Content(mediaType = "application/json", schema = @Schema(implementation = CategoryDto.class)))
     @GetMapping
     public List<CategoryDto> listAll(
             @Parameter(hidden = true)
@@ -58,11 +63,11 @@ public class CategoryController {
                 .collect(Collectors.toList());
     }
 
-    @Operation(summary = "Busca uma categoria por ID")
+    @Operation(summary = "Busca uma categoria por ID do usuário autenticado")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Categoria encontrada",
                     content = @Content(schema = @Schema(implementation = CategoryDto.class))),
-            @ApiResponse(responseCode = "404", description = "Categoria não encontrada")
+            @ApiResponse(responseCode = "404", description = "Categoria ou Usuário não encontrado")
     })
     @GetMapping("/{id}")
     public ResponseEntity<CategoryDto> getById(
@@ -82,12 +87,16 @@ public class CategoryController {
     }
 
     @Operation(summary = "Cria uma nova categoria para o usuário autenticado")
-    @ApiResponse(responseCode = "201", description = "Categoria criada com sucesso",
-            content = @Content(schema = @Schema(implementation = CategoryDto.class)))
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Categoria criada com sucesso",
+                    content = @Content(schema = @Schema(implementation = CategoryDto.class))),
+            @ApiResponse(responseCode = "400", description = "Nome da categoria não fornecido ou inválido"),
+            @ApiResponse(responseCode = "404", description = "Usuário não encontrado")
+    })
     @PostMapping
     public ResponseEntity<CategoryDto> create(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Dados da categoria a criar",
+                    description = "Dados da categoria a criar. O campo 'name' é obrigatório. O campo 'description' é opcional e terá um valor padrão se não informado.",
                     required = true,
                     content = @Content(schema = @Schema(implementation = CategoryDto.class))
             )
@@ -100,22 +109,36 @@ public class CategoryController {
                         "Usuário não encontrado com email " + userEmail));
         UUID userId = u.getId();
 
+        if (!StringUtils.hasText(dto.getName())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O nome da categoria é obrigatório.");
+        }
+
         Category toSave = new Category();
         toSave.setUserId(userId);
+        toSave.setName(dto.getName());
+
+        // O campo 'description' do DTO é passado para a entidade.
+        // Se for null no DTO, o @PrePersist na entidade definirá o valor padrão.
+        // Se for uma string (mesmo vazia) no DTO, esse valor será usado (e o @PrePersist pode ou não sobrescrever se for só espaços).
         toSave.setDescription(dto.getDescription());
+
 
         Category saved = categoryService.save(toSave);
         CategoryDto result = toDto(saved);
 
-        URI location = URI.create("/api/categories/" + saved.getId());
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest()
+                .path("/{id}")
+                .buildAndExpand(saved.getId())
+                .toUri();
         return ResponseEntity.created(location).body(result);
     }
 
-    @Operation(summary = "Atualiza a descrição de uma categoria existente")
+    @Operation(summary = "Atualiza o nome e/ou descrição de uma categoria existente")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Atualizado com sucesso",
                     content = @Content(schema = @Schema(implementation = CategoryDto.class))),
-            @ApiResponse(responseCode = "404", description = "Categoria não encontrada")
+            @ApiResponse(responseCode = "400", description = "Dados inválidos (ex: nome vazio se fornecido para atualização)"),
+            @ApiResponse(responseCode = "404", description = "Categoria ou Usuário não encontrado")
     })
     @PutMapping("/{id}")
     public ResponseEntity<CategoryDto> update(
@@ -123,7 +146,7 @@ public class CategoryController {
                     example = "7fa85f64-1234-4562-b3fc-2c963f66afa6")
             @PathVariable UUID id,
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Nova descrição da categoria",
+                    description = "Novos dados para a categoria. Campos não fornecidos (ou nulos) não serão alterados. Para limpar a descrição, envie uma string vazia.",
                     required = true,
                     content = @Content(schema = @Schema(implementation = CategoryDto.class))
             )
@@ -136,14 +159,19 @@ public class CategoryController {
                         "Usuário não encontrado com email " + userEmail));
         UUID userId = u.getId();
 
-        Category updated = categoryService.updateDescription(id, userId, dto.getDescription());
+        // Validação: se o nome for fornecido para atualização, não pode ser apenas espaços em branco.
+        if (dto.getName() != null && !StringUtils.hasText(dto.getName())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O nome da categoria, se fornecido para atualização, não pode ser vazio ou apenas espaços.");
+        }
+
+        Category updated = categoryService.updateCategory(id, userId, dto);
         return ResponseEntity.ok(toDto(updated));
     }
 
-    @Operation(summary = "Remove uma categoria por ID")
+    @Operation(summary = "Remove uma categoria por ID do usuário autenticado")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Removido com sucesso"),
-            @ApiResponse(responseCode = "404", description = "Categoria não encontrada")
+            @ApiResponse(responseCode = "404", description = "Categoria ou Usuário não encontrado")
     })
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
@@ -166,6 +194,7 @@ public class CategoryController {
         return new CategoryDto(
                 c.getId(),
                 c.getUserId(),
+                c.getName(),
                 c.getDescription(),
                 c.getCreatedAt(),
                 c.getUpdatedAt()

@@ -13,5 +13,6 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
 
     Optional<Category> findByIdAndUserId(UUID id, UUID userId);
 
+    // Retorna o número de entidades deletadas, útil para verificar se a operação teve efeito
     long deleteByIdAndUserId(UUID id, UUID userId);
 }
