@@ -11,6 +11,7 @@ import fincontrol.com.fincontrol.repository.BankRepository;
 import fincontrol.com.fincontrol.repository.CategoryRepository;
 import fincontrol.com.fincontrol.repository.ExpenseRepository;
 import fincontrol.com.fincontrol.repository.UserRepository;
+import org.springframework.security.core.context.SecurityContextHolder; // Import mantido
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,10 +38,11 @@ public class ExpenseService {
     }
 
     /** Cria nova despesa */
+    @Transactional // Mantido da feature branch
     public ExpenseDto create(ExpenseCreateDto dto, UUID userId) {
         // 1) Buscar categoria obrigatória
         Category cat = categoryRepo.findById(dto.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Categoria não encontrada"));
+                .orElseThrow(() -> new RuntimeException("Categoria não encontrada para o ID: " + dto.getCategoryId())); // Mensagem detalhada da feature branch
 
         // 2) Criar despesa e setar todos os campos obrigatórios
         Expense ex = new Expense();
@@ -52,13 +54,13 @@ public class ExpenseService {
         // 3) Se vier bankId no DTO, buscar e setar
         if (dto.getBankId() != null) {
             Bank bank = bankRepo.findById(dto.getBankId())
-                    .orElseThrow(() -> new RuntimeException("Banco não encontrado"));
+                    .orElseThrow(() -> new RuntimeException("Banco não encontrado para o ID: " + dto.getBankId())); // Mensagem detalhada da feature branch
             ex.setBank(bank);
         }
 
-        // 4) Atribuir o User que está logado (pegue o userId do token/jwt)
+        // 4) Atribuir o User que está logado
         User user = userRepo.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado para o ID: " + userId)); // Mensagem detalhada da feature branch
         ex.setUser(user);
 
         // 5) Salvar: aqui o JPA irá preencher createdAt e updatedAt
@@ -66,46 +68,76 @@ public class ExpenseService {
         return toDto(salvo);
     }
 
-    /** Lista todas as despesas */
-    public List<ExpenseDto> listAll() {
-        return expenseRepo.findAll().stream()
-                .map(this::toDto)
+    /** Lista todas as despesas do usuário logado */
+    public List<ExpenseDto> listAll() { // Tipo de retorno já era ExpenseDto, o importante é a lógica interna
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+
+        // Utilizando findAllByUserId do ExpenseRepository
+        return expenseRepo.findAllByUserId(currentUser.getId()).stream()
+                .map(this::toDto) // Correto, pois o stream é de Expense
                 .collect(Collectors.toList());
     }
 
     /** Atualiza despesa existente */
     @Transactional
     public ExpenseDto update(UUID id, ExpenseUpdateDto dto) {
+        // Verificação de permissão do usuário da feature branch
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+
         Expense e = expenseRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Despesa não encontrada"));
+                .orElseThrow(() -> new RuntimeException("Despesa não encontrada para o ID: " + id));
+
+        if (!e.getUser().getId().equals(currentUser.getId())) {
+            throw new RuntimeException("Acesso negado: Esta despesa não pertence ao usuário autenticado.");
+        }
 
         if (dto.getName()        != null) e.setName(dto.getName());
         if (dto.getDescription() != null) e.setDescription(dto.getDescription());
         if (dto.getValue()       != null) e.setValue(dto.getValue());
         if (dto.getCategoryId()  != null) {
             Category cat = categoryRepo.findById(dto.getCategoryId())
-                    .orElseThrow(() -> new RuntimeException("Categoria não encontrada"));
+                    .orElseThrow(() -> new RuntimeException("Categoria não encontrada para o ID: " + dto.getCategoryId()));
             e.setCategory(cat);
         }
         if (dto.getBankId()      != null) {
             Bank b = bankRepo.findById(dto.getBankId())
-                    .orElseThrow(() -> new RuntimeException("Banco não encontrado"));
+                    .orElseThrow(() -> new RuntimeException("Banco não encontrado para o ID: " + dto.getBankId()));
             e.setBank(b);
+        } else {
+            // Lógica opcional da feature branch para desvincular banco
+            // e.setBank(null); // Descomente se quiser permitir desvincular o banco enviando bankId: null
         }
 
-        // ao salvar, o JPA irá atualizar o campo updatedAt automaticamente
         return toDto(expenseRepo.save(e));
     }
 
     /** Deleta despesa */
+    @Transactional // Mantido da feature branch
     public void delete(UUID id) {
+        // Verificação de permissão do usuário da feature branch
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+
+        Expense expenseToDelete = expenseRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Despesa não encontrada para o ID: " + id));
+
+        if (!expenseToDelete.getUser().getId().equals(currentUser.getId())) {
+            throw new RuntimeException("Acesso negado: Esta despesa não pertence ao usuário autenticado.");
+        }
+
         expenseRepo.deleteById(id);
     }
 
     private ExpenseDto toDto(Expense e) {
         UUID bankId = e.getBank()   != null ? e.getBank().getId()   : null;
         UUID categoryId = e.getCategory() != null ? e.getCategory().getId() : null;
-        String   categoryDesc = e.getCategory() != null ? e.getCategory().getDescription() : null;
+        // Corrigido para pegar o 'name' da categoria, conforme a alteração recente na entidade Category
+        String   categoryName = e.getCategory() != null ? e.getCategory().getName() : null;
 
         return new ExpenseDto(
                 e.getId(),
@@ -113,12 +145,10 @@ public class ExpenseService {
                 e.getDescription(),
                 e.getValue(),
                 categoryId,
-                categoryDesc,
+                categoryName, // Usando categoryName
                 bankId,
                 e.getCreatedAt(),
                 e.getUpdatedAt()
         );
     }
-
-
 }
