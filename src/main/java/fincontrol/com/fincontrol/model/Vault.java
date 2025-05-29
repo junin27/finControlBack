@@ -9,7 +9,6 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.time.LocalDate; // Import para LocalDate
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -17,11 +16,11 @@ import java.util.UUID;
 @Setter
 @Entity
 @EntityListeners(AuditingEntityListener.class)
-@Table(name = "expenses")
-public class Expense {
+@Table(name = "vaults")
+public class Vault {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Column(nullable = false, length = 100)
@@ -31,18 +30,14 @@ public class Expense {
     private String description;
 
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal value;
+    private BigDecimal amount = BigDecimal.ZERO; // Saldo atual do cofre
 
-    @Column(name = "expense_date", nullable = true) // Novo campo para a data da despesa
-    private LocalDate expenseDate;
+    @Column(nullable = false, length = 10) // Ex: BRL, USD, EUR
+    private String currency;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "category_id", nullable = false)
-    private Category category;
-
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY) // Opcional
     @JoinColumn(name = "bank_id", nullable = true)
-    private Bank bank;
+    private Bank bank; // Banco de onde o dinheiro pode ter vindo ou para onde pode voltar
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false)
@@ -61,6 +56,5 @@ public class Expense {
         if (!StringUtils.hasText(this.description)) {
             this.description = "Campo não Informado pelo Usuário";
         }
-        // Se expenseDate não for informado, ele permanecerá null, o que é o comportamento desejado para um campo opcional.
     }
 }

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate; // Import para LocalDate
 import java.util.UUID;
 
 @Data
@@ -27,4 +28,7 @@ public class ExpenseCreateDto {
 
     @Schema(description="ID do banco (opcional)", example="daa0e2a7-2ad6-42b9-8271-1d7e9facc027")
     private UUID bankId;
+
+    @Schema(description="Data em que a despesa ocorreu (opcional, formato YYYY-MM-DD)", example="2025-05-27")
+    private LocalDate expenseDate; // Novo campo opcional
 }
