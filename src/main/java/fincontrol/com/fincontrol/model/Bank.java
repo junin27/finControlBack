@@ -6,7 +6,7 @@ import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-import org.springframework.util.StringUtils; // Import necessário para StringUtils
+import org.springframework.util.StringUtils; // Import da sua branch 'feature'
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @Getter @Setter
 @Entity
-@EntityListeners(AuditingEntityListener.class)
+@EntityListeners(AuditingEntityListener.class) // Mantendo a anotação limpa
 @Table(name = "banks")
 public class Bank {
     @Id @GeneratedValue
@@ -24,7 +24,7 @@ public class Bank {
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(length = 255) // Já é nullable = true por padrão
+    @Column(length = 255) // Mantendo nullable = true por padrão, o @PrePersist lida com o default
     private String description;
 
     @CreatedDate
@@ -32,7 +32,7 @@ public class Bank {
     private LocalDateTime createdAt;
 
     @LastModifiedDate
-    @Column(name = "updated_at", nullable = false) // Se você quiser que updatedAt nunca seja nulo
+    @Column(name = "updated_at", nullable = false) // Mantendo nullable = false da sua branch 'feature'
     private LocalDateTime updatedAt;
 
     @Column(nullable = false, precision = 12, scale = 2)
@@ -54,10 +54,5 @@ public class Bank {
         if (!StringUtils.hasText(this.description)) {
             this.description = "Campo não Informado pelo Usuário";
         }
-        // Os campos createdAt e updatedAt serão gerenciados pelo AuditingEntityListener
-        // Na criação, @CreatedDate e @LastModifiedDate são preenchidos.
     }
-
-    // Não é necessário um @PreUpdate para esta lógica específica de valor padrão na criação.
-    // O @LastModifiedDate já cuidará de atualizar o updatedAt em modificações.
 }
