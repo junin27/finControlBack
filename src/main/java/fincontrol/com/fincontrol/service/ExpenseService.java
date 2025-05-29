@@ -11,7 +11,7 @@ import fincontrol.com.fincontrol.repository.BankRepository;
 import fincontrol.com.fincontrol.repository.CategoryRepository;
 import fincontrol.com.fincontrol.repository.ExpenseRepository;
 import fincontrol.com.fincontrol.repository.UserRepository;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.context.SecurityContextHolder; // Import mantido
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils; // Import para StringUtils
@@ -95,9 +95,7 @@ public class ExpenseService {
                 needsUpdate = true;
             }
         }
-        // Para description, se o DTO trouxer null, não alteramos. Se trouxer uma string (mesmo vazia), atualizamos.
-        // O valor padrão "Campo não informado..." só se aplica na criação via @PrePersist.
-        if (dto.getDescription() != null) {
+        if (dto.getDescription() != null) { // Permite limpar description se "" for enviado
             if(!dto.getDescription().equals(e.getDescription())) {
                 e.setDescription(dto.getDescription());
                 needsUpdate = true;
@@ -109,10 +107,9 @@ public class ExpenseService {
                 needsUpdate = true;
             }
         }
-        // Atualiza expenseDate. Se dto.getExpenseDate() for null, a data será removida (setada para null).
-        if (dto.getExpenseDate() != e.getExpenseDate() && // Otimização para evitar setar se for o mesmo
-                (dto.getExpenseDate() != null || e.getExpenseDate() != null)) { // Evita se ambos forem null
-            e.setExpenseDate(dto.getExpenseDate());
+        if (dto.getExpenseDate() != e.getExpenseDate() &&
+           (dto.getExpenseDate() != null || e.getExpenseDate() != null)) {
+            e.setExpenseDate(dto.getExpenseDate()); // Permite setar para null para limpar a data
             needsUpdate = true;
         }
 
@@ -126,39 +123,26 @@ public class ExpenseService {
         }
 
         // Lógica para atualizar ou desassociar o banco
-        if (dto.getBankId() != null) { // Se um bankId foi fornecido no DTO
-            if (e.getBank() == null || !dto.getBankId().equals(e.getBank().getId())) { // Se o banco atual é diferente ou nulo
+        if (dto.getBankId() != null) { // Se um bankId foi fornecido no DTO para associar/mudar
+            if (e.getBank() == null || !dto.getBankId().equals(e.getBank().getId())) {
                 Bank b = bankRepo.findById(dto.getBankId())
                         .orElseThrow(() -> new RuntimeException("Banco não encontrado para o ID: " + dto.getBankId()));
                 e.setBank(b);
                 needsUpdate = true;
             }
-        } else { // Se bankId não foi fornecido no DTO, não significa necessariamente que queremos remover.
-            // Para remover, o cliente deveria enviar explicitamente "bankId": null no JSON.
-            // No entanto, como UUID bankId no DTO será null se não vier no JSON, precisamos de uma lógica mais explícita
-            // se quisermos distinguir "não enviado" de "enviado como null para limpar".
-            // Por simplicidade aqui: se dto.getBankId() é null, não alteramos o banco.
-            // Se você quiser permitir limpar o banco, o DTO precisaria de um wrapper ou o cliente enviar um valor especial.
-            // Ou, se o campo "bankId" estiver presente no JSON com valor null, dto.getBankId() será null.
-            // Para permitir desassociar:
-            // if (e.getBank() != null && dto.getBankId() == null) { // Apenas se bankId foi intencionalmente setado para null no DTO (precisaria de um DTO mais esperto)
-            //     // Para o DTO atual, se dto.getBankId() é null, ele não entra no if anterior.
-            //     // Se quisermos que a omissão do bankId no DTO de update *não* desassocie, esta lógica está ok.
-            //     // Se quisermos que um `bankId: null` no JSON *desassocie*, precisamos de:
-            //     // Verifique se a intenção é realmente limpar. Uma forma é se o DTO pode distinguir "não presente" de "presente e nulo".
-            //     // Assumindo que se dto.getBankId() é null, não mudamos a menos que já fosse diferente.
-            //     // A lógica atual NÃO LIMPARÁ o banco se bankId for omitido no DTO de update.
-            //     // Para permitir limpar, se o campo está no JSON como null:
-            //     // (Esta parte requer que você decida como o DTO deve se comportar com campos nulos para "limpeza")
-            //     // Se dto.isBankIdPresentAndNull() por exemplo (não padrão)
-            // }
+        } else {
+            // Se o bankId NÃO está no DTO (ou seja, dto.getBankId() é null),
+            // mas a despesa *estava* associada a um banco, isso significa que queremos desassociar.
+            if (e.getBank() != null) { // Apenas desassocie se havia um banco antes
+                e.setBank(null);
+                needsUpdate = true;
+            }
         }
-
 
         if(needsUpdate) {
             return toDto(expenseRepo.save(e));
         }
-        return toDto(e); // Retorna o DTO mesmo se não houve save, para refletir o estado atual
+        return toDto(e);
     }
 
     @Transactional
@@ -198,7 +182,7 @@ public class ExpenseService {
         return new ExpenseDto(
                 e.getId(),
                 e.getName(),
-                e.getDescription(), // Já terá o valor padrão da entidade se aplicável na criação
+                e.getDescription(),
                 e.getValue(),
                 e.getExpenseDate(), // Adicionado expenseDate
                 categoryId,

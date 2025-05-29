@@ -6,7 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime; // Import agora é usado
+import java.time.LocalDateTime; // Import agora é usado para createdAt e updatedAt
 import java.util.UUID;
 
 @Data

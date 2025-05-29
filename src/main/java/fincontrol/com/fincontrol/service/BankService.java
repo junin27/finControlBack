@@ -9,9 +9,9 @@ import fincontrol.com.fincontrol.repository.BankRepository;
 import fincontrol.com.fincontrol.repository.ExpenseRepository;
 import fincontrol.com.fincontrol.repository.ExtraIncomeRepository;
 import fincontrol.com.fincontrol.repository.UserRepository;
-import jakarta.transaction.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional; // Import Transactional
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -52,7 +52,6 @@ public class BankService {
             b.setBalance(dto.getInitialBalance());
         }
         // createdAt e updatedAt serão preenchidos pelo @EntityListeners(AuditingEntityListener.class) na entidade Bank
-
         bankRepo.save(b);
 
         return toDto(b);
@@ -63,7 +62,7 @@ public class BankService {
         User currentUser = userRepo.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        return bankRepo.findAllByUserId(currentUser.getId()).stream()
+        return bankRepo.findAllByUserId(currentUser.getId()).stream() // Usando o método do repositório que filtra por usuário
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
