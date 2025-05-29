@@ -4,9 +4,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate; // Import para LocalDate
 import java.util.UUID;
 
-// ExpenseUpdateDto.java
 @Data
 @Schema(name="ExpenseUpdateDto", description="Dados para atualizar uma despesa existente")
 public class ExpenseUpdateDto {
@@ -24,4 +24,7 @@ public class ExpenseUpdateDto {
 
     @Schema(description="ID do banco (opcional)", example="3fa85f64-5717-4562-b3fc-2c963f66afa6")
     private UUID bankId;
+
+    @Schema(description="Nova data em que a despesa ocorreu (opcional, formato YYYY-MM-DD). Envie null para remover a data.", example="2025-05-28")
+    private LocalDate expenseDate; // Novo campo opcional
 }
