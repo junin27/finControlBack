@@ -14,9 +14,9 @@ import java.util.UUID;
 @Getter
 @Setter
 @Entity
-@Table(name = "users")
 @EntityListeners(AuditingEntityListener.class)
-public class User {
+@Table(name = "expenses")
+public class Expense {
 
     @Id
     @GeneratedValue
@@ -25,22 +25,29 @@ public class User {
     @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(nullable = false, unique = true, length = 150)
-    private String email;
-
-    @Column(name = "password_hash", nullable = false, length = 255)
-    private String passwordHash;
+    @Column(length = 255)
+    private String description;
 
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal salary;
+    private BigDecimal value;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "category_id", nullable = false)
+    private Category category;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bank_id")
+    private Bank bank;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @CreatedDate
-    @Column(name = "created_at", columnDefinition = "TIMESTAMP", updatable = false, nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @LastModifiedDate
-    @Column(name = "updated_at", columnDefinition = "TIMESTAMP", nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    public User() {}
 }

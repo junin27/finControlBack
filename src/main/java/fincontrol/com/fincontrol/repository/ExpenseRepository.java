@@ -1,6 +1,6 @@
 package fincontrol.com.fincontrol.repository;
 
-import fincontrol.com.fincontrol.model.ExtraIncome;
+import fincontrol.com.fincontrol.model.Expense;
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -11,16 +11,17 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
-public interface ExtraIncomeRepository extends JpaRepository<ExtraIncome, Long> {
+public interface ExpenseRepository extends JpaRepository<Expense, UUID> {
+    // mais queries customizadas podem ser adicionadas aqui
 
-    List<ExtraIncome> findByUserId(java.util.UUID userId);
-
-    @Query("SELECT COALESCE(SUM(e.amount),0) FROM ExtraIncome e WHERE e.bank.id = :bankId")
-    BigDecimal sumIncomeByBank(@Param("bankId") UUID bankId);
+    @Query("SELECT COALESCE(SUM(e.value),0) FROM Expense e WHERE e.bank.id = :bankId")
+    BigDecimal sumExpenseByBank(@Param("bankId") UUID bankId);
 
     @Modifying
     @Transactional
-    @Query("DELETE FROM ExtraIncome e WHERE e.bank.id = :bankId")
+    @Query("DELETE FROM Expense e WHERE e.bank.id = :bankId")
     void deleteByBankId(@Param("bankId") UUID bankId);
+
+    List<Expense> findAllByUserId(UUID userId);
 
 }

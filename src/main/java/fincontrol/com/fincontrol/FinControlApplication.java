@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.security.SecurityScheme;
 import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 @SpringBootApplication
 @OpenAPIDefinition(
@@ -21,6 +23,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 		scheme = "bearer",
 		bearerFormat = "JWT"
 )
+@EnableJpaAuditing
+@EnableAspectJAutoProxy
 public class FinControlApplication {
 	public static void main(String[] args) {
 		System.out.println(">> DB URL = " + System.getenv("SPRING_DATASOURCE_URL"));
