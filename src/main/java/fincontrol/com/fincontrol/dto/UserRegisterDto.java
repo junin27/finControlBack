@@ -1,6 +1,7 @@
 package fincontrol.com.fincontrol.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.*;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -9,15 +10,34 @@ import java.math.BigDecimal;
 @Schema(name = "UserRegisterDto", description = "Dados para registro de um novo usuário")
 public class UserRegisterDto {
 
-    @Schema(description = "Nome completo do usuário", example = "Fulano da Silva", required = true)
+    @NotBlank(message = "O nome completo é obrigatório.")
+    // Regex: Pelo menos duas palavras, cada palavra com no mínimo 2 caracteres.
+    // Palavras podem conter letras (incluindo acentuadas) e apóstrofos.
+    @Pattern(regexp = "^[a-zA-ZÀ-ú']{2,}(\\s[a-zA-ZÀ-ú']{2,})+$", message = "Você precisa informar o seu nome completo com ao menos duas palavras, e cada palavra deve ter no mínimo 2 letras (somente letras e apóstrofos são permitidos).")
+    // Size: Garante um tamanho total mínimo (ex: 2 letras + espaço + 2 letras = 5) e um máximo.
+    @Size(min = 5, max = 100, message = "O nome completo deve ter entre 5 e 100 caracteres.")
+    @Schema(description = "Nome completo do usuário (mínimo duas palavras, cada com pelo menos 2 letras). Exemplo: João Silva", example = "João Silva", requiredMode = Schema.RequiredMode.REQUIRED)
     private String name;
 
-    @Schema(description = "E-mail de login", example = "fulano@example.com", required = true)
+    @NotBlank(message = "O e-mail é obrigatório.")
+    @Email(message = "Informe um email válido, exemplo seuemail@email.com")
+    @Size(max = 150, message = "O e-mail não pode exceder 150 caracteres.")
+    @Schema(description = "E-mail de login", example = "joao.silva@example.com", requiredMode = Schema.RequiredMode.REQUIRED)
     private String email;
 
-    @Schema(description = "Senha de acesso", example = "senhaSuperSecreta", required = true)
+    @NotBlank(message = "A senha é obrigatória.")
+    @Size(min = 6, max = 100, message = "A sua senha deve ter no mínimo 6 e no máximo 100 caracteres.")
+    @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d@$!%*?&]{6,}$", message = "A sua senha está fraca, ela precisa possuir no mínimo 6 caracteres, com ao menos uma letra e um número.")
+    @Schema(description = "Senha de acesso (mínimo 6 caracteres, com letras e números)", example = "Senha@123", requiredMode = Schema.RequiredMode.REQUIRED)
     private String password;
 
-    @Schema(description = "Salário inicial do usuário", example = "3000.00", required = true)
+    @NotBlank(message = "A confirmação de senha é obrigatória.")
+    @Size(min = 6, max = 100, message = "A confirmação de senha deve ter no mínimo 6 e no máximo 100 caracteres.") // Consistência de tamanho com a senha
+    @Schema(description = "Confirmação da senha de acesso (deve ser igual à senha)", example = "Senha@123", requiredMode = Schema.RequiredMode.REQUIRED)
+    private String confirmPassword;
+
+    @NotNull(message = "O salário mensal é obrigatório.")
+    @PositiveOrZero(message = "Seu salário mensal precisa ser maior ou igual a 0.")
+    @Schema(description = "Salário inicial do usuário", example = "3500.00", requiredMode = Schema.RequiredMode.REQUIRED)
     private BigDecimal salary;
 }
