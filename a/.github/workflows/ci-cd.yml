@@ -1,0 +1,101 @@
+name: CI/CD FinControl
+
+on:
+  push:
+    branches:
+      - main # Aciona o workflow em pushes para a branch main
+
+jobs:
+  build-and-test:
+    name: Build & Test with Maven
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: maven
+
+      - name: Grant execute permission for mvnw
+        run: chmod +x ./mvnw
+
+      - name: Build and Test with Maven
+        run: ./mvnw clean verify -B
+        env:
+          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
+          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+
+  deploy_render:
+    name: Deploy to Render
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Trigger Render Deploy Hook
+        run: |
+          echo "Triggering Render deploy hook..."
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          echo "Render deploy hook triggered."
+
+  deploy_koyeb:
+    name: Deploy to Koyeb
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Install Koyeb CLI and Verify Installation
+        run: |
+          echo "=== INICIANDO INSTALAÇÃO DA CLI DO KOYEB (MODO DETALHADO) ==="
+          curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sh -ex
+          echo "=== SCRIPT DE INSTALAÇÃO DA CLI DO KOYEB EXECUTADO ==="
+          
+          KOYEB_CLI_BIN_DIR_EXPECTED="${HOME}/.koyeb/bin"
+          KOYEB_CLI_BIN_DIR_ALTERNATIVE="${HOME}/.local/bin"
+
+          echo "--> Adicionando caminhos potenciais da CLI ao GITHUB_PATH..."
+          if [ -d "${KOYEB_CLI_BIN_DIR_EXPECTED}" ]; then
+            echo "${KOYEB_CLI_BIN_DIR_EXPECTED}" >> $GITHUB_PATH
+            echo "Adicionado ${KOYEB_CLI_BIN_DIR_EXPECTED} ao GITHUB_PATH."
+          fi
+          if [ -d "${KOYEB_CLI_BIN_DIR_ALTERNATIVE}" ]; then
+            echo "${KOYEB_CLI_BIN_DIR_ALTERNATIVE}" >> $GITHUB_PATH
+            echo "Adicionado ${KOYEB_CLI_BIN_DIR_ALTERNATIVE} ao GITHUB_PATH."
+          fi
+          echo "VERIFICAÇÃO DO AMBIENTE CONCLUÍDA."
+
+      - name: Trigger Koyeb Redeploy
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
+        run: |
+          echo "==> INICIANDO PASSO DE REDEPLOY NO KOYEB <=="
+          KOYEB_CLI_PATH="" 
+
+          if [ -f "/home/runner/.koyeb/bin/koyeb" ]; then
+            KOYEB_CLI_PATH="/home/runner/.koyeb/bin/koyeb"
+          elif [ -f "/home/runner/.local/bin/koyeb" ]; then
+            KOYEB_CLI_PATH="/home/runner/.local/bin/koyeb"
+          elif command -v koyeb &> /dev/null; then 
+            KOYEB_CLI_PATH=$(command -v koyeb)
+          fi
+
+          if [ -z "${KOYEB_CLI_PATH}" ]; then
+            echo "ERRO CRÍTICO: CLI do Koyeb não encontrada. Verifique os logs do passo de instalação."
+            exit 1 
+          fi
+          
+          echo "Usando CLI do Koyeb em: ${KOYEB_CLI_PATH}"
+          echo "Verificando versão da CLI do Koyeb:"
+          ${KOYEB_CLI_PATH} version
+          
+          echo "Acionando redeploy para productive-natividad/fincontrolback..." # <--- CORREÇÃO APLICADA AQUI
+          ${KOYEB_CLI_PATH} services redeploy productive-natividad/fincontrolback
+          
+          echo "Koyeb redeploy triggered."

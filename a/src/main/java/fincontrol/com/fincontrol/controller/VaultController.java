@@ -1,0 +1,130 @@
+package fincontrol.com.fincontrol.controller;
+
+import fincontrol.com.fincontrol.dto.VaultCreateDto;
+import fincontrol.com.fincontrol.dto.VaultDto;
+import fincontrol.com.fincontrol.dto.VaultUpdateDto;
+import fincontrol.com.fincontrol.exception.ResourceNotFoundException; // Se usar
+import fincontrol.com.fincontrol.model.User;
+import fincontrol.com.fincontrol.repository.UserRepository;
+import fincontrol.com.fincontrol.service.VaultService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+
+
+import java.net.URI;
+import java.util.List;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/vaults")
+@Tag(name = "Cofres", description = "Gerenciamento de cofres do usuário")
+public class VaultController {
+
+    private final VaultService vaultService;
+    private final UserRepository userRepository; // Para obter o ID do usuário
+
+    public VaultController(VaultService vaultService, UserRepository userRepository) {
+        this.vaultService = vaultService;
+        this.userRepository = userRepository;
+    }
+
+    private UUID getAuthenticatedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String userEmail = authentication.getName();
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário autenticado não encontrado com email: " + userEmail));
+        return user.getId();
+    }
+
+    @Operation(summary = "Cria um novo cofre para o usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Cofre criado com sucesso", content = @Content(schema = @Schema(implementation = VaultDto.class))),
+            @ApiResponse(responseCode = "400", description = "Dados inválidos ou saldo insuficiente no banco"),
+            @ApiResponse(responseCode = "404", description = "Usuário ou Banco não encontrado")
+    })
+    @PostMapping
+    public ResponseEntity<VaultDto> createVault(@Valid @RequestBody VaultCreateDto vaultCreateDto) {
+        UUID userId = getAuthenticatedUserId();
+        VaultDto createdVault = vaultService.createVault(vaultCreateDto, userId);
+        URI location = ServletUriComponentsBuilder.fromCurrentRequest().path("/{id}")
+                .buildAndExpand(createdVault.getId()).toUri();
+        return ResponseEntity.created(location).body(createdVault);
+    }
+
+    @Operation(summary = "Lista todos os cofres do usuário autenticado")
+    @ApiResponse(responseCode = "200", description = "Lista de cofres retornada com sucesso")
+    @GetMapping
+    public ResponseEntity<List<VaultDto>> getAllVaultsForUser() {
+        UUID userId = getAuthenticatedUserId();
+        List<VaultDto> vaults = vaultService.getAllVaultsByUser(userId);
+        return ResponseEntity.ok(vaults);
+    }
+
+    @Operation(summary = "Busca um cofre específico pelo ID para o usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cofre encontrado", content = @Content(schema = @Schema(implementation = VaultDto.class))),
+            @ApiResponse(responseCode = "404", description = "Cofre não encontrado ou não pertence ao usuário")
+    })
+    @GetMapping("/{vaultId}")
+    public ResponseEntity<VaultDto> getVaultById(
+            @Parameter(description = "ID do cofre a ser buscado") @PathVariable UUID vaultId) {
+        UUID userId = getAuthenticatedUserId();
+        VaultDto vault = vaultService.getVaultByIdAndUser(vaultId, userId);
+        return ResponseEntity.ok(vault);
+    }
+
+    @Operation(summary = "Lista todos os cofres do usuário autenticado vinculados a um banco específico")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de cofres retornada com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Banco não encontrado ou não pertence ao usuário")
+    })
+    @GetMapping("/bank/{bankId}")
+    public ResponseEntity<List<VaultDto>> getVaultsByBank(
+            @Parameter(description = "ID do banco para filtrar os cofres") @PathVariable UUID bankId) {
+        UUID userId = getAuthenticatedUserId();
+        List<VaultDto> vaults = vaultService.getVaultsByBankAndUser(bankId, userId);
+        return ResponseEntity.ok(vaults);
+    }
+
+
+    @Operation(summary = "Atualiza dados de um cofre existente do usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cofre atualizado com sucesso", content = @Content(schema = @Schema(implementation = VaultDto.class))),
+            @ApiResponse(responseCode = "400", description = "Dados inválidos"),
+            @ApiResponse(responseCode = "404", description = "Cofre não encontrado ou não pertence ao usuário")
+    })
+    @PutMapping("/{vaultId}")
+    public ResponseEntity<VaultDto> updateVault(
+            @Parameter(description = "ID do cofre a ser atualizado") @PathVariable UUID vaultId,
+            @Valid @RequestBody VaultUpdateDto vaultUpdateDto) {
+        UUID userId = getAuthenticatedUserId();
+        VaultDto updatedVault = vaultService.updateVault(vaultId, vaultUpdateDto, userId);
+        return ResponseEntity.ok(updatedVault);
+    }
+
+    @Operation(summary = "Deleta um cofre do usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Cofre deletado com sucesso"),
+            @ApiResponse(responseCode = "400", description = "Operação inválida (ex: tentar deletar cofre não vinculado a banco com saldo)"),
+            @ApiResponse(responseCode = "404", description = "Cofre não encontrado ou não pertence ao usuário")
+    })
+    @DeleteMapping("/{vaultId}")
+    public ResponseEntity<Void> deleteVault(
+            @Parameter(description = "ID do cofre a ser deletado") @PathVariable UUID vaultId) {
+        UUID userId = getAuthenticatedUserId();
+        vaultService.deleteVault(vaultId, userId);
+        return ResponseEntity.noContent().build();
+    }
+}
