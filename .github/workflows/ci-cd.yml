@@ -57,21 +57,8 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sh -ex
           echo "=== SCRIPT DE INSTALAÇÃO DA CLI DO KOYEB EXECUTADO ==="
           
-          echo "======================================================================"
-          echo "VERIFICANDO AMBIENTE APÓS INSTALAÇÃO:"
-          echo "======================================================================"
-          
-          KOYEB_CLI_DIR_EXPECTED="${HOME}/.koyeb"
-          KOYEB_CLI_BIN_DIR_EXPECTED="${KOYEB_CLI_DIR_EXPECTED}/bin"
+          KOYEB_CLI_BIN_DIR_EXPECTED="${HOME}/.koyeb/bin"
           KOYEB_CLI_BIN_DIR_ALTERNATIVE="${HOME}/.local/bin"
-
-          echo "--> Conteúdo do diretório ${KOYEB_CLI_BIN_DIR_EXPECTED} (se existir):"
-          ls -la "${KOYEB_CLI_BIN_DIR_EXPECTED}" || echo "AVISO: Diretório ${KOYEB_CLI_BIN_DIR_EXPECTED} não encontrado."
-          echo "----------------------------------------------------------------------"
-          
-          echo "--> Conteúdo do diretório ${KOYEB_CLI_BIN_DIR_ALTERNATIVE} (se existir):"
-          ls -la "${KOYEB_CLI_BIN_DIR_ALTERNATIVE}" || echo "AVISO: Diretório ${KOYEB_CLI_BIN_DIR_ALTERNATIVE} não encontrado."
-          echo "----------------------------------------------------------------------"
 
           echo "--> Adicionando caminhos potenciais da CLI ao GITHUB_PATH..."
           if [ -d "${KOYEB_CLI_BIN_DIR_EXPECTED}" ]; then
@@ -82,38 +69,7 @@ jobs:
             echo "${KOYEB_CLI_BIN_DIR_ALTERNATIVE}" >> $GITHUB_PATH
             echo "Adicionado ${KOYEB_CLI_BIN_DIR_ALTERNATIVE} ao GITHUB_PATH."
           fi
-          echo "Conteúdo atual do GITHUB_PATH (após adições): $GITHUB_PATH"
-          echo "----------------------------------------------------------------------"
-          
-          echo "--> Exibindo o PATH completo atual do sistema:"
-          echo "$PATH"
-          echo "----------------------------------------------------------------------"
-
-          echo "--> Verificando qual 'koyeb' está no PATH:"
-          which koyeb || echo "AVISO: Comando 'koyeb' não encontrado no PATH padrão."
-          echo "----------------------------------------------------------------------"
-
-          echo "--> Tentando executar 'koyeb version' diretamente (confiando no PATH modificado):"
-          koyeb version || echo "AVISO: Falha ao executar 'koyeb version' diretamente."
-          echo "----------------------------------------------------------------------"
-          
-          echo "--> Tentando executar 'koyeb version' com caminho ${KOYEB_CLI_BIN_DIR_EXPECTED}/koyeb:"
-          if [ -f "${KOYEB_CLI_BIN_DIR_EXPECTED}/koyeb" ]; then
-            "${KOYEB_CLI_BIN_DIR_EXPECTED}/koyeb" version || echo "AVISO: Falha ao executar koyeb com ${KOYEB_CLI_BIN_DIR_EXPECTED}/koyeb version."
-          else
-            echo "AVISO: Executável ${KOYEB_CLI_BIN_DIR_EXPECTED}/koyeb não encontrado."
-          fi
-          echo "----------------------------------------------------------------------"
-          
-          echo "--> Tentando executar 'koyeb version' com caminho ${KOYEB_CLI_BIN_DIR_ALTERNATIVE}/koyeb:"
-          if [ -f "${KOYEB_CLI_BIN_DIR_ALTERNATIVE}/koyeb" ]; then
-            "${KOYEB_CLI_BIN_DIR_ALTERNATIVE}/koyeb" version || echo "AVISO: Falha ao executar koyeb com ${KOYEB_CLI_BIN_DIR_ALTERNATIVE}/koyeb version."
-          else
-            echo "AVISO: Executável ${KOYEB_CLI_BIN_DIR_ALTERNATIVE}/koyeb não encontrado."
-          fi
-          echo "======================================================================"
           echo "VERIFICAÇÃO DO AMBIENTE CONCLUÍDA."
-          echo "======================================================================"
 
       - name: Trigger Koyeb Redeploy
         env:
@@ -128,7 +84,6 @@ jobs:
             KOYEB_CLI_PATH="/home/runner/.local/bin/koyeb"
           elif command -v koyeb &> /dev/null; then 
             KOYEB_CLI_PATH=$(command -v koyeb)
-            echo "CLI do Koyeb encontrada no PATH em: ${KOYEB_CLI_PATH}"
           fi
 
           if [ -z "${KOYEB_CLI_PATH}" ]; then
@@ -140,8 +95,7 @@ jobs:
           echo "Verificando versão da CLI do Koyeb:"
           ${KOYEB_CLI_PATH} version
           
-          echo "Acionando redeploy para fincontrolback/productive-natividad-junin27..." # <--- CORREÇÃO APLICADA AQUI
-          # Confirme se 'fincontrolback' é o nome do App e 'productive-natividad-junin27' é o nome do Serviço no Koyeb.
-          ${KOYEB_CLI_PATH} services redeploy fincontrolback/productive-natividad-junin27
+          echo "Acionando redeploy para productive-natividad/fincontrolback..." # <--- CORREÇÃO APLICADA AQUI
+          ${KOYEB_CLI_PATH} services redeploy productive-natividad/fincontrolback
           
           echo "Koyeb redeploy triggered."
