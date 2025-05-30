@@ -63,10 +63,8 @@ jobs:
       - name: Install Koyeb CLI and Verify Installation
         run: |
           echo "=== INICIANDO INSTALAÇÃO DA CLI DO KOYEB (MODO DETALHADO) ==="
-          # Executa o script de instalação com 'sh -ex'
-          # -e: sai imediatamente se um comando falhar
-          # -x: imprime cada comando antes de executá-lo
-          curl -L https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | sh -ex
+          # Usando a URL da documentação oficial (branch master)
+          curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/master/install.sh | sh -ex
           echo "=== SCRIPT DE INSTALAÇÃO DA CLI DO KOYEB EXECUTADO ==="
           
           echo "======================================================================"
