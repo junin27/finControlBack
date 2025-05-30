@@ -5,11 +5,12 @@ import org.springframework.data.jpa.repository.JpaRepository; // Import principa
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import jakarta.transaction.Transactional; // Se você usa em métodos default aqui
+import jakarta.transaction.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List; // Import que adicionamos
-import java.util.UUID; // Import para UUID
+import java.util.List;    // Import que adicionamos
+import java.util.Optional; // << ADICIONADO: Import para Optional
+import java.util.UUID;    // Import para UUID
 
 public interface ExpenseRepository extends JpaRepository<Expense, UUID> { // Garanta que Expense e UUID estão corretos aqui
 
@@ -22,4 +23,6 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> { // Gar
     void deleteByBankId(@Param("bankId") UUID bankId);
 
     List<Expense> findAllByUserId(UUID userId); // Método que adicionamos
+
+    Optional<Expense> findByIdAndUserId(UUID id, UUID userId);
 }
