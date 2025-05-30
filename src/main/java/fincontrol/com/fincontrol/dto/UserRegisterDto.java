@@ -11,10 +11,7 @@ import java.math.BigDecimal;
 public class UserRegisterDto {
 
     @NotBlank(message = "O nome completo é obrigatório.")
-    // Regex: Pelo menos duas palavras, cada palavra com no mínimo 2 caracteres.
-    // Palavras podem conter letras (incluindo acentuadas) e apóstrofos.
     @Pattern(regexp = "^[a-zA-ZÀ-ú']{2,}(\\s[a-zA-ZÀ-ú']{2,})+$", message = "Você precisa informar o seu nome completo com ao menos duas palavras, e cada palavra deve ter no mínimo 2 letras (somente letras e apóstrofos são permitidos).")
-    // Size: Garante um tamanho total mínimo (ex: 2 letras + espaço + 2 letras = 5) e um máximo.
     @Size(min = 5, max = 100, message = "O nome completo deve ter entre 5 e 100 caracteres.")
     @Schema(description = "Nome completo do usuário (mínimo duas palavras, cada com pelo menos 2 letras). Exemplo: João Silva", example = "João Silva", requiredMode = Schema.RequiredMode.REQUIRED)
     private String name;
@@ -32,7 +29,7 @@ public class UserRegisterDto {
     private String password;
 
     @NotBlank(message = "A confirmação de senha é obrigatória.")
-    @Size(min = 6, max = 100, message = "A confirmação de senha deve ter no mínimo 6 e no máximo 100 caracteres.") // Consistência de tamanho com a senha
+    @Size(min = 6, max = 100, message = "A confirmação de senha deve ter no mínimo 6 e no máximo 100 caracteres.")
     @Schema(description = "Confirmação da senha de acesso (deve ser igual à senha)", example = "Senha@123", requiredMode = Schema.RequiredMode.REQUIRED)
     private String confirmPassword;
 
@@ -41,3 +38,4 @@ public class UserRegisterDto {
     @Schema(description = "Salário inicial do usuário", example = "3500.00", requiredMode = Schema.RequiredMode.REQUIRED)
     private BigDecimal salary;
 }
+   
