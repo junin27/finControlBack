@@ -47,25 +47,47 @@ jobs:
         run: |
           curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
 
-  deploy_koyeb: # NOVO JOB PARA O KOYEB
-    name: Trigger Koyeb Deploy
-    needs: build-and-test # Depende do sucesso do build e teste
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' # Roda apenas em push para a main
+  deploy_koyeb:
+        name: Trigger Koyeb Deploy
+        needs: build-and-test
+        runs-on: ubuntu-latest
+        if: github.ref == 'refs/heads/main'
 
-    steps:
-      - name: Install Koyeb CLI
-        run: |
-          curl -sfL https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | sh
-          echo "/home/runner/.koyeb/bin" >> $GITHUB_PATH # Adiciona a CLI ao PATH
+        steps:
+          - name: Install Koyeb CLI and Verify Installation
+            run: |
+              echo "Iniciando instalação da CLI do Koyeb..."
+              curl -sfL https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | sh
+              echo "CLI do Koyeb instalada."
+              
+              echo "Adicionando /home/runner/.koyeb/bin ao GITHUB_PATH..."
+              echo "/home/runner/.koyeb/bin" >> $GITHUB_PATH
+              echo "Conteúdo atual do GITHUB_PATH: $GITHUB_PATH"
+              
+              echo "Verificando se o diretório .koyeb/bin existe e seu conteúdo:"
+              ls -la /home/runner/.koyeb/bin
+              
+              echo "Verificando qual 'koyeb' está no PATH (após a adição ao GITHUB_PATH):"
+              which koyeb || echo "Comando 'koyeb' não encontrado no PATH padrão após adição ao GITHUB_PATH."
+              
+              echo "Tentando executar 'koyeb version' com caminho completo:"
+              /home/runner/.koyeb/bin/koyeb version || echo "Falha ao executar koyeb com caminho completo."
 
-      - name: Trigger Koyeb Redeploy
-        env:
-          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
-        run: |
-          koyeb login --token $KOYEB_TOKEN
-          # Substitua <SEU_APP_KOYEB>/<SEU_SERVICO_KOYEB> pelos nomes corretos do seu app e serviço no Koyeb
-          # Este comando força um redeploy. Se o serviço no Koyeb estiver configurado para
-          # build a partir do Git, ele puxará o código mais recente da branch configurada.
-          koyeb services redeploy seu-app-koyeb/seu-servico-koyeb
-          echo "Koyeb redeploy triggered."
+          - name: Trigger Koyeb Redeploy
+            env:
+              KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
+            run: |
+              echo "Verificando PATH atual antes de rodar os comandos Koyeb:"
+              echo $PATH
+              
+              echo "Tentando executar 'koyeb version' (deve usar o GITHUB_PATH se configurado corretamente):"
+              koyeb version # Este deve funcionar se GITHUB_PATH foi efetivo para este step
+              
+              echo "Fazendo login no Koyeb..."
+              # Usar o caminho completo para garantir, ou confiar no GITHUB_PATH se o 'koyeb version' acima funcionou
+              /home/runner/.koyeb/bin/koyeb login --token $KOYEB_TOKEN
+              
+              echo "Acionando redeploy..."
+              # Substitua <SEU_APP_KOYEB>/<SEU_SERVICO_KOYEB> pelos nomes corretos
+              /home/runner/.koyeb/bin/koyeb services redeploy seu-app-koyeb/seu-servico-koyeb
+              echo "Koyeb redeploy triggered."
