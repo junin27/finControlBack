@@ -1,9 +1,9 @@
-name: CI/CD
+name: CI/CD FinControl
 
 on:
   push:
     branches:
-      - main
+      - main # Aciona o workflow em pushes para a branch main
 
 jobs:
   build-and-test:
@@ -11,157 +11,167 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3 # Alterado para v3 ou v4 se preferir
+      - name: Checkout code
+        uses: actions/checkout@v4 # Usando a v4 que é mais recente
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3 # Alterado para v3 ou v4
+        uses: actions/setup-java@v4 # Usando a v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
-          cache: maven
+          cache: maven # Habilita o cache de dependências do Maven
 
-      - name: Build package
-        run: mvn clean package -B -DskipTests # Adicionado -DskipTests se os testes rodam no passo seguinte
+      - name: Build and Test with Maven
+        # O comando 'verify' do Maven executa todas as fases do ciclo de vida até 'verify',
+        # incluindo 'compile', 'test', e 'package'.
+        # As variáveis de ambiente para o banco de dados são injetadas aqui para os testes.
+        run: ./mvnw clean verify -B # Usa o Maven Wrapper e roda testes como parte do verify
         env:
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
-      - name: Run tests
-        run: mvn test -B # Se o 'package' já roda testes, este pode ser redundante ou focar em outro tipo
-        env:
-          SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
-          SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
-          SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
+  deploy_render:
+    name: Deploy to Render
+    needs: build-and-test # Só roda se o job 'build-and-test' passar
+    runs-on: ubuntu-latest
+    # A condição 'if' é redundante se o trigger 'on' já está restrito à branch main,
+    # mas não prejudica e pode ser útil se você adicionar outros triggers no futuro.
+    if: github.ref == 'refs/heads/main' 
 
-  deploy_render: # Mantendo seu deploy do Render
-    name: Trigger Render Deploy
-    needs: build-and-test
+    steps:
+      # O checkout do código aqui pode não ser necessário se o deploy hook do Render
+      # não depender de arquivos do repositório neste passo específico.
+      # Se o hook do Render apenas aciona um build no Render que puxa o código do Git,
+      # este checkout pode ser omitido.
+      # - name: Checkout code
+      #   uses: actions/checkout@v4
+
+      - name: Trigger Render Deploy Hook
+        run: |
+          echo "Triggering Render deploy hook..."
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          echo "Render deploy hook triggered."
+
+  deploy_koyeb:
+    name: Deploy to Koyeb
+    needs: build-and-test # Só roda se o job 'build-and-test' passar
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v3 # Necessário se o hook precisar de algo do repo, senão pode ser omitido
-
-      - name: Trigger Render Deploy Hook
+      - name: Install Koyeb CLI and Verify Installation
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+          echo "=== INICIANDO INSTALAÇÃO DA CLI DO KOYEB (MODO DETALHADO) ==="
+          # Executa o script de instalação com 'sh -ex'
+          # -e: sai imediatamente se um comando falhar
+          # -x: imprime cada comando antes de executá-lo
+          curl -L https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | sh -ex
+          echo "=== SCRIPT DE INSTALAÇÃO DA CLI DO KOYEB EXECUTADO ==="
+          
+          echo "======================================================================"
+          echo "VERIFICANDO AMBIENTE APÓS INSTALAÇÃO:"
+          echo "======================================================================"
+          
+          echo "--> Verificando o diretório HOME do runner:"
+          echo "HOME=${HOME}"
+          
+          echo "--> Conteúdo do diretório HOME do runner (${HOME}):"
+          ls -la "${HOME}"
+          echo "----------------------------------------------------------------------"
+          
+          KOYEB_CLI_DIR_1="${HOME}/.koyeb"
+          KOYEB_CLI_BIN_DIR_1="${KOYEB_CLI_DIR_1}/bin"
+          KOYEB_CLI_DIR_2="${HOME}/.local" # Outro local comum
+          KOYEB_CLI_BIN_DIR_2="${KOYEB_CLI_DIR_2}/bin"
 
-deploy_koyeb:
-        name: Trigger Koyeb Deploy
-        needs: build-and-test
-        runs-on: ubuntu-latest
-        if: github.ref == 'refs/heads/main'
+          echo "--> Conteúdo do diretório ${KOYEB_CLI_DIR_1} (se existir):"
+          ls -la "${KOYEB_CLI_DIR_1}" || echo "AVISO: Diretório ${KOYEB_CLI_DIR_1} não encontrado."
+          echo "----------------------------------------------------------------------"
+          
+          echo "--> Conteúdo do diretório ${KOYEB_CLI_BIN_DIR_1} (se existir):"
+          ls -la "${KOYEB_CLI_BIN_DIR_1}" || echo "AVISO: Diretório ${KOYEB_CLI_BIN_DIR_1} não encontrado."
+          echo "----------------------------------------------------------------------"
 
-        steps:
-          - name: Install Koyeb CLI and Verify Installation
-            run: |
-              echo "=== INICIANDO INSTALAÇÃO DA CLI DO KOYEB (MODO DETALHADO) ==="
-              # Executa o script de instalação com 'sh -ex'
-              # -e: sai imediatamente se um comando falhar
-              # -x: imprime cada comando antes de executá-lo
-              curl -L https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | sh -ex
-              echo "=== SCRIPT DE INSTALAÇÃO DA CLI DO KOYEB EXECUTADO ==="
-              
-              echo "======================================================================"
-              echo "VERIFICANDO AMBIENTE APÓS INSTALAÇÃO:"
-              echo "======================================================================"
-              
-              echo "--> Verificando o diretório HOME do runner:"
-              echo "HOME=${HOME}"
-              
-              echo "--> Conteúdo do diretório HOME do runner (${HOME}):"
-              ls -la "${HOME}"
-              echo "----------------------------------------------------------------------"
-              
-              KOYEB_CLI_DIR_1="${HOME}/.koyeb"
-              KOYEB_CLI_BIN_DIR_1="${KOYEB_CLI_DIR_1}/bin"
-              KOYEB_CLI_DIR_2="${HOME}/.local" # Outro local comum
-              KOYEB_CLI_BIN_DIR_2="${KOYEB_CLI_DIR_2}/bin"
+          echo "--> Conteúdo do diretório ${KOYEB_CLI_DIR_2} (se existir):"
+          ls -la "${KOYEB_CLI_DIR_2}" || echo "AVISO: Diretório ${KOYEB_CLI_DIR_2} não encontrado."
+          echo "----------------------------------------------------------------------"
 
-              echo "--> Conteúdo do diretório ${KOYEB_CLI_DIR_1} (se existir):"
-              ls -la "${KOYEB_CLI_DIR_1}" || echo "AVISO: Diretório ${KOYEB_CLI_DIR_1} não encontrado."
-              echo "----------------------------------------------------------------------"
-              
-              echo "--> Conteúdo do diretório ${KOYEB_CLI_BIN_DIR_1} (se existir):"
-              ls -la "${KOYEB_CLI_BIN_DIR_1}" || echo "AVISO: Diretório ${KOYEB_CLI_BIN_DIR_1} não encontrado."
-              echo "----------------------------------------------------------------------"
+          echo "--> Conteúdo do diretório ${KOYEB_CLI_BIN_DIR_2} (se existir):"
+          ls -la "${KOYEB_CLI_BIN_DIR_2}" || echo "AVISO: Diretório ${KOYEB_CLI_BIN_DIR_2} não encontrado."
+          echo "----------------------------------------------------------------------"
 
-              echo "--> Conteúdo do diretório ${KOYEB_CLI_DIR_2} (se existir):"
-              ls -la "${KOYEB_CLI_DIR_2}" || echo "AVISO: Diretório ${KOYEB_CLI_DIR_2} não encontrado."
-              echo "----------------------------------------------------------------------"
+          echo "--> Adicionando caminhos potenciais da CLI ao GITHUB_PATH..."
+          if [ -d "${KOYEB_CLI_BIN_DIR_1}" ]; then
+            echo "${KOYEB_CLI_BIN_DIR_1}" >> $GITHUB_PATH
+            echo "Adicionado ${KOYEB_CLI_BIN_DIR_1} ao GITHUB_PATH."
+          fi
+          if [ -d "${KOYEB_CLI_BIN_DIR_2}" ]; then
+            echo "${KOYEB_CLI_BIN_DIR_2}" >> $GITHUB_PATH
+            echo "Adicionado ${KOYEB_CLI_BIN_DIR_2} ao GITHUB_PATH."
+          fi
+          echo "Conteúdo atual do GITHUB_PATH (após adições): $GITHUB_PATH"
+          echo "----------------------------------------------------------------------"
+          
+          echo "--> Exibindo o PATH completo atual do sistema:"
+          echo "$PATH"
+          echo "----------------------------------------------------------------------"
 
-              echo "--> Conteúdo do diretório ${KOYEB_CLI_BIN_DIR_2} (se existir):"
-              ls -la "${KOYEB_CLI_BIN_DIR_2}" || echo "AVISO: Diretório ${KOYEB_CLI_BIN_DIR_2} não encontrado."
-              echo "----------------------------------------------------------------------"
+          echo "--> Verificando qual 'koyeb' está no PATH:"
+          which koyeb || echo "AVISO: Comando 'koyeb' não encontrado no PATH padrão."
+          echo "----------------------------------------------------------------------"
 
-              echo "--> Adicionando caminhos potenciais da CLI ao GITHUB_PATH..."
-              if [ -d "${KOYEB_CLI_BIN_DIR_1}" ]; then
-                echo "${KOYEB_CLI_BIN_DIR_1}" >> $GITHUB_PATH
-                echo "Adicionado ${KOYEB_CLI_BIN_DIR_1} ao GITHUB_PATH."
-              fi
-              if [ -d "${KOYEB_CLI_BIN_DIR_2}" ]; then
-                echo "${KOYEB_CLI_BIN_DIR_2}" >> $GITHUB_PATH
-                echo "Adicionado ${KOYEB_CLI_BIN_DIR_2} ao GITHUB_PATH."
-              fi
-              echo "Conteúdo atual do GITHUB_PATH (após adições): $GITHUB_PATH"
-              echo "----------------------------------------------------------------------"
-              
-              echo "--> Exibindo o PATH completo atual do sistema:"
-              echo "$PATH"
-              echo "----------------------------------------------------------------------"
+          echo "--> Tentando executar 'koyeb version' diretamente (confiando no PATH modificado):"
+          koyeb version || echo "AVISO: Falha ao executar 'koyeb version' diretamente."
+          echo "----------------------------------------------------------------------"
 
-              echo "--> Verificando qual 'koyeb' está no PATH:"
-              which koyeb || echo "AVISO: Comando 'koyeb' não encontrado no PATH padrão."
-              echo "----------------------------------------------------------------------"
+          echo "--> Tentando executar 'koyeb version' com caminho ${KOYEB_CLI_BIN_DIR_1}/koyeb:"
+          if [ -f "${KOYEB_CLI_BIN_DIR_1}/koyeb" ]; then
+            "${KOYEB_CLI_BIN_DIR_1}/koyeb" version || echo "AVISO: Falha ao executar koyeb com ${KOYEB_CLI_BIN_DIR_1}/koyeb version."
+          else
+            echo "AVISO: Executável ${KOYEB_CLI_BIN_DIR_1}/koyeb não encontrado."
+          fi
+          echo "----------------------------------------------------------------------"
+          
+          echo "--> Tentando executar 'koyeb version' com caminho ${KOYEB_CLI_BIN_DIR_2}/koyeb:"
+          if [ -f "${KOYEB_CLI_BIN_DIR_2}/koyeb" ]; then
+            "${KOYEB_CLI_BIN_DIR_2}/koyeb" version || echo "AVISO: Falha ao executar koyeb com ${KOYEB_CLI_BIN_DIR_2}/koyeb version."
+          else
+            echo "AVISO: Executável ${KOYEB_CLI_BIN_DIR_2}/koyeb não encontrado."
+          fi
+          echo "======================================================================"
+          echo "VERIFICAÇÃO DO AMBIENTE CONCLUÍDA."
+          echo "======================================================================"
 
-              echo "--> Tentando executar 'koyeb version' diretamente (confiando no PATH modificado):"
-              koyeb version || echo "AVISO: Falha ao executar 'koyeb version' diretamente."
-              echo "----------------------------------------------------------------------"
+      - name: Trigger Koyeb Redeploy
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
+        run: |
+          echo "==> INICIANDO PASSO DE REDEPLOY NO KOYEB <=="
+          KOYEB_CLI_PATH="" # Variável para armazenar o caminho da CLI do Koyeb
 
-              echo "--> Tentando executar 'koyeb version' com caminho ${KOYEB_CLI_BIN_DIR_1}/koyeb:"
-              if [ -f "${KOYEB_CLI_BIN_DIR_1}/koyeb" ]; then
-                "${KOYEB_CLI_BIN_DIR_1}/koyeb" version || echo "AVISO: Falha ao executar koyeb com ${KOYEB_CLI_BIN_DIR_1}/koyeb version."
-              else
-                echo "AVISO: Executável ${KOYEB_CLI_BIN_DIR_1}/koyeb não encontrado."
-              fi
-              echo "----------------------------------------------------------------------"
-              
-              echo "--> Tentando executar 'koyeb version' com caminho ${KOYEB_CLI_BIN_DIR_2}/koyeb:"
-              if [ -f "${KOYEB_CLI_BIN_DIR_2}/koyeb" ]; then
-                "${KOYEB_CLI_BIN_DIR_2}/koyeb" version || echo "AVISO: Falha ao executar koyeb com ${KOYEB_CLI_BIN_DIR_2}/koyeb version."
-              else
-                echo "AVISO: Executável ${KOYEB_CLI_BIN_DIR_2}/koyeb não encontrado."
-              fi
-              echo "======================================================================"
-              echo "VERIFICAÇÃO DO AMBIENTE CONCLUÍDA."
-              echo "======================================================================"
+          # Tenta encontrar a CLI do Koyeb nos caminhos comuns
+          if [ -f "/home/runner/.koyeb/bin/koyeb" ]; then
+            KOYEB_CLI_PATH="/home/runner/.koyeb/bin/koyeb"
+          elif [ -f "/home/runner/.local/bin/koyeb" ]; then
+            KOYEB_CLI_PATH="/home/runner/.local/bin/koyeb"
+          elif command -v koyeb &> /dev/null; then # Verifica se está no PATH (após GITHUB_PATH)
+            KOYEB_CLI_PATH=$(command -v koyeb)
+          fi
 
-          - name: Trigger Koyeb Redeploy
-            env:
-              KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
-            run: |
-              echo "==> INICIANDO PASSO DE REDEPLOY NO KOYEB <=="
-              KOYEB_CLI_PATH=""
-              if [ -f "/home/runner/.koyeb/bin/koyeb" ]; then
-                KOYEB_CLI_PATH="/home/runner/.koyeb/bin/koyeb"
-              elif [ -f "/home/runner/.local/bin/koyeb" ]; then
-                KOYEB_CLI_PATH="/home/runner/.local/bin/koyeb"
-              fi
-
-              if [ -z "${KOYEB_CLI_PATH}" ]; then
-                echo "ERRO CRÍTICO: CLI do Koyeb não encontrada em nenhum dos caminhos esperados. Saindo."
-                exit 1
-              fi
-              
-              echo "Usando CLI do Koyeb em: ${KOYEB_CLI_PATH}"
-              echo "Tentando executar '${KOYEB_CLI_PATH} version':"
-              ${KOYEB_CLI_PATH} version
-              
-              echo "Fazendo login no Koyeb..."
-              ${KOYEB_CLI_PATH} login --token $KOYEB_TOKEN
-              
-              echo "Acionando redeploy para fincontrolback/fincontrol-prod..." # IMPORTANTE: Verifique este nome!
-              # Substitua 'seu-app-koyeb/seu-servico-koyeb' pelos nomes reais do seu app e serviço no Koyeb
-              ${KOYEB_CLI_PATH} services redeploy seu-app-koyeb/seu-servico-koyeb
-              echo "Koyeb redeploy triggered."
+          if [ -z "${KOYEB_CLI_PATH}" ]; then
+            echo "ERRO CRÍTICO: CLI do Koyeb não encontrada. Verifique os logs do passo de instalação."
+            exit 1
+          fi
+          
+          echo "Usando CLI do Koyeb em: ${KOYEB_CLI_PATH}"
+          echo "Tentando executar '${KOYEB_CLI_PATH} version':"
+          ${KOYEB_CLI_PATH} version
+          
+          echo "Fazendo login no Koyeb..."
+          ${KOYEB_CLI_PATH} login --token $KOYEB_TOKEN
+          
+          echo "Acionando redeploy para seu-app-koyeb/seu-servico-koyeb..." # IMPORTANTE: Verifique este nome!
+          # SUBSTITUA 'seu-app-koyeb/seu-servico-koyeb' PELOS NOMES REAIS DO SEU APP E SERVIÇO NO KOYEB
+          ${KOYEB_CLI_PATH} services redeploy seu-app-koyeb/seu-servico-koyeb
+          echo "Koyeb redeploy triggered."
