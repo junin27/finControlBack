@@ -11,38 +11,61 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v3 # Alterado para v3 ou v4 se preferir
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v3 # Alterado para v3 ou v4
         with:
           distribution: temurin
           java-version: '17'
           cache: maven
 
       - name: Build package
-        run: mvn clean package -B
+        run: mvn clean package -B -DskipTests # Adicionado -DskipTests se os testes rodam no passo seguinte
         env:
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
       - name: Run tests
-        run: mvn test -B
+        run: mvn test -B # Se o 'package' já roda testes, este pode ser redundante ou focar em outro tipo
         env:
           SPRING_DATASOURCE_URL: ${{ secrets.SPRING_DATASOURCE_URL }}
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
 
-  deploy:
+  deploy_render: # Mantendo seu deploy do Render
     name: Trigger Render Deploy
     needs: build-and-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v3 # Necessário se o hook precisar de algo do repo, senão pode ser omitido
 
       - name: Trigger Render Deploy Hook
         run: |
           curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
+
+  deploy_koyeb: # NOVO JOB PARA O KOYEB
+    name: Trigger Koyeb Deploy
+    needs: build-and-test # Depende do sucesso do build e teste
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # Roda apenas em push para a main
+
+    steps:
+      - name: Install Koyeb CLI
+        run: |
+          curl -sfL https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | sh
+          echo "/home/runner/.koyeb/bin" >> $GITHUB_PATH # Adiciona a CLI ao PATH
+
+      - name: Trigger Koyeb Redeploy
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
+        run: |
+          koyeb login --token $KOYEB_TOKEN
+          # Substitua <SEU_APP_KOYEB>/<SEU_SERVICO_KOYEB> pelos nomes corretos do seu app e serviço no Koyeb
+          # Este comando força um redeploy. Se o serviço no Koyeb estiver configurado para
+          # build a partir do Git, ele puxará o código mais recente da branch configurada.
+          koyeb services redeploy seu-app-koyeb/seu-servico-koyeb
+          echo "Koyeb redeploy triggered."
