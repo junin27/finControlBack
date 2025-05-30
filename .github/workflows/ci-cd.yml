@@ -117,12 +117,11 @@ jobs:
 
       - name: Trigger Koyeb Redeploy
         env:
-          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }} # Garanta que este secret está configurado no GitHub
+          KOYEB_TOKEN: ${{ secrets.KOYEB_API_TOKEN }}
         run: |
           echo "==> INICIANDO PASSO DE REDEPLOY NO KOYEB <=="
           KOYEB_CLI_PATH="" 
 
-          # Tenta encontrar a CLI do Koyeb nos caminhos comuns ou no PATH
           if [ -f "/home/runner/.koyeb/bin/koyeb" ]; then
             KOYEB_CLI_PATH="/home/runner/.koyeb/bin/koyeb"
           elif [ -f "/home/runner/.local/bin/koyeb" ]; then
@@ -139,13 +138,10 @@ jobs:
           
           echo "Usando CLI do Koyeb em: ${KOYEB_CLI_PATH}"
           echo "Verificando versão da CLI do Koyeb:"
-          ${KOYEB_CLI_PATH} version # A autenticação para este comando usará KOYEB_TOKEN do env se necessário
+          ${KOYEB_CLI_PATH} version
           
-          # O comando 'koyeb login' foi removido pois causava erro de terminal interativo.
-          # A CLI deve usar a variável de ambiente KOYEB_TOKEN automaticamente para autenticação.
+          echo "Acionando redeploy para fincontrolback/productive-natividad-junin27..." # <--- CORREÇÃO APLICADA AQUI
+          # Confirme se 'fincontrolback' é o nome do App e 'productive-natividad-junin27' é o nome do Serviço no Koyeb.
+          ${KOYEB_CLI_PATH} services redeploy fincontrolback/productive-natividad-junin27
           
-          echo "Acionando redeploy para seu-app-koyeb/seu-servico-koyeb..."
-          # IMPORTANTE: Substitua 'seu-app-koyeb/seu-servico-koyeb' pelos nomes REAIS
-          # do seu aplicativo e serviço no Koyeb.
-          ${KOYEB_CLI_PATH} services redeploy seu-app-koyeb/seu-servico-koyeb
           echo "Koyeb redeploy triggered."
