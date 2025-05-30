@@ -45,6 +45,7 @@ public class SecurityConfig {
                   "/swagger-ui/index.html"
               ).permitAll()
               .requestMatchers("/auth/**").permitAll()
+              .requestMatchers("/actuator/health").permitAll()
               .requestMatchers("/", "/ping").permitAll()
               .anyRequest().authenticated()
           )
