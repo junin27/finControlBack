@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.GenericGenerator;
-import org.springframework.util.StringUtils; // Import para StringUtils
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -26,24 +26,24 @@ public class Category {
     @Column(name = "user_id", updatable = false, nullable = false)
     private UUID userId;
 
-    @Column(name = "name", nullable = false, length = 100) // Renomeado e obrigatório
+    @Column(name = "name", nullable = false, length = 100) // Nome principal da categoria
     private String name;
 
-    @Column(name = "description", length = 255, nullable = true) // Novo campo, opcional
+    @Column(name = "description", length = 255, nullable = true) // Descrição opcional
     private String description;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false) // updatedAt agora é not null
+    @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
         this.createdAt = now;
-        this.updatedAt = now; // updatedAt inicializado com createdAt
-        if (!StringUtils.hasText(this.description)) { // Define valor padrão para description se não informado
+        this.updatedAt = now;
+        if (!StringUtils.hasText(this.description)) {
             this.description = "Campo não Informado pelo Usuário";
         }
     }
