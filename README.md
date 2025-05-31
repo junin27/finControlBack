@@ -8,6 +8,395 @@ Todas as rotas da API de Bancos requerem autenticação. Certifique-se de inclui
 
 ---
 
+# Autenticação/Usuários
+## Convenções
+
+- **Formato da URL Base:** Todos os endpoints são prefixados com a URL base da sua aplicação (ex: `http://localhost:8080`).
+- **Autenticação:** Endpoints sob `/api` requerem um token JWT Bearer no header `Authorization`.
+- **Formato de Resposta:** As respostas são em JSON.
+- **Respostas de Erro:** Erros são retornados com um status HTTP apropriado e um corpo JSON contendo:
+    - `timestamp`: Data e hora da ocorrência do erro.
+    - `status`: Código de status HTTP.
+    - `error`: Descrição curta do erro (ex: "Not Found", "Bad Request").
+    - `message`: Mensagem detalhada sobre o erro.
+    - `path`: O caminho do endpoint que foi chamado.
+    - `details` (opcional): Uma lista de mensagens de erro específicas, geralmente para erros de validação de campos.
+
+## 1. Endpoints de Autenticação
+
+Controlador responsável: `AuthController`
+Rota base: `/auth`
+
+### 1.1. Registrar Novo Usuário
+
+- **Endpoint:** `POST /auth/register`
+- **Funcionalidade:** Cria um novo usuário no sistema.
+- **Autenticação:** Nenhuma autenticação é necessária.
+
+#### Corpo da Requisição (`UserRegisterDto`)
+
+| Campo             | Tipo         | Obrigatório | Descrição                                                                                                | Validações                                                                                                                                                                                                                                                                                                                         | Exemplo                     |
+|-------------------|--------------|-------------|----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| `name`            | String       | Sim         | Nome completo do usuário.                                                                                | Deve ter entre 5 e 100 caracteres. Deve conter ao menos duas palavras, cada uma com no mínimo 2 letras. Somente letras e apóstrofos são permitidos. Ex: "João Silva".                                                                                                                                                              | "Fulano de Tal"             |
+| `email`           | String       | Sim         | Endereço de e-mail do usuário.                                                                           | Deve ser um e-mail válido e único no sistema. Máximo de 150 caracteres.                                                                                                                                                                                                                                                              | "fulano.tal@example.com"    |
+| `password`        | String       | Sim         | Senha de acesso do usuário.                                                                              | Deve ter no mínimo 6 e no máximo 100 caracteres. Deve conter ao menos uma letra e um número.                                                                                                                                                                                                                                         | "Senha@123"                 |
+| `confirmPassword` | String       | Sim         | Confirmação da senha.                                                                                    | Deve ser idêntica ao campo `password`. Mínimo de 6 e máximo de 100 caracteres.                                                                                                                                                                                                                                                      | "Senha@123"                 |
+| `salary`          | BigDecimal   | Sim         | Salário mensal inicial do usuário.                                                                       | Deve ser um valor numérico maior ou igual a zero.                                                                                                                                                                                                                                                                                  | `3500.00`                   |
+
+#### Respostas Esperadas
+
+- **`201 Created`**: Usuário registrado com sucesso.
+    - **Corpo da Resposta (`UserDto`):**
+      ```json
+      {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "name": "Fulano de Tal",
+          "email": "fulano.tal@example.com",
+          "salary": 3500.00,
+          "createdAt": "2025-05-31T10:00:00Z",
+          "updatedAt": "2025-05-31T10:00:00Z"
+      }
+      ```
+    - **Headers:** `Location` contendo a URI do novo recurso criado (ex: `/auth/register/3fa85f64-5717-4562-b3fc-2c963f66afa6`).
+
+#### Possíveis Erros
+
+- **`400 Bad Request`**: Dados de registro inválidos.
+    - **Motivos:**
+        - Campos obrigatórios faltando.
+        - `name`: Não informado, menos de duas palavras, caracteres inválidos, ou fora do tamanho permitido (5-100 caracteres).
+        - `email`: Formato inválido ou tamanho excedido.
+        - `password`: Menos de 6 caracteres, não contém letras e números.
+        - `confirmPassword`: Não confere com a senha informada.
+        - `salary`: Valor negativo.
+    - **Exemplo de Corpo da Resposta (Erro de Validação Múltipla):**
+      ```json
+      {
+          "timestamp": "2025-05-30T22:00:00Z",
+          "status": 400,
+          "error": "Erro de Validação de Campo",
+          "message": "Um ou mais campos falharam na validação. Veja os detalhes.",
+          "path": "/auth/register",
+          "details": [
+              "name: Você precisa informar o seu nome completo com ao menos duas palavras, e cada palavra deve ter no mínimo 2 letras (somente letras e apóstrofos são permitidos).",
+              "password: A sua senha está fraca, ela precisa possuir no mínimo 6 caracteres, com ao menos uma letra e um número."
+          ]
+      }
+      ```
+    - **Exemplo de Corpo da Resposta (Senhas Não Conferem):**
+      ```json
+      {
+          "timestamp": "2025-05-30T22:01:00Z",
+          "status": 400,
+          "error": "Bad Request",
+          "message": "As duas senhas não conferem, elas precisam ter os mesmos caracteres exatamente iguais.",
+          "path": "/auth/register"
+      }
+      ```
+- **`409 Conflict`**: O e-mail fornecido já está cadastrado no sistema.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-30T22:02:00Z",
+          "status": 409,
+          "error": "Conflict",
+          "message": "O e-mail 'existente@example.com' já está cadastrado.",
+          "path": "/auth/register"
+      }
+      ```
+
+### 1.2. Autenticar Usuário (Login)
+
+- **Endpoint:** `POST /auth/login`
+- **Funcionalidade:** Autentica um usuário existente e retorna um token JWT.
+- **Autenticação:** Nenhuma autenticação é necessária.
+
+#### Corpo da Requisição (`LoginDto`)
+
+| Campo    | Tipo   | Obrigatório | Descrição                               | Validações                                                                 | Exemplo                  |
+|----------|--------|-------------|-----------------------------------------|----------------------------------------------------------------------------|--------------------------|
+| `email`  | String | Sim         | Endereço de e-mail do usuário.          | Obrigatório. Deve ser um e-mail válido. Máximo de 150 caracteres.          | "joao.silva@example.com" |
+| `password` | String | Sim         | Senha de acesso do usuário.             | Obrigatório.                                                               | "Senha@123"              |
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Autenticado com sucesso.
+    - **Corpo da Resposta:**
+      ```json
+      {
+          "token": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqb2FvLnNpbHZhQGV4YW1wbGUuY29tIiwiaWF0IjoxNzA5Mjg0MzIwLCJleHAiOjE3MDkzNzA3MjB9.exampleToken",
+          "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "userName": "João Silva"
+      }
+      ```
+      - `token`: Token JWT para ser usado em requisições autenticadas.
+      - `userId`: ID do usuário autenticado.
+      - `userName`: Nome do usuário autenticado.
+
+#### Possíveis Erros
+
+- **`400 Bad Request`**: Dados de login inválidos.
+    - **Motivos:** E-mail ou senha não fornecidos ou em formato incorreto.
+    - **Exemplo de Corpo da Resposta (Campo Faltando):**
+      ```json
+      {
+          "timestamp": "2025-05-30T22:03:00Z",
+          "status": 400,
+          "error": "Erro de Validação de Campo",
+          "message": "Um ou mais campos falharam na validação. Veja os detalhes.",
+          "path": "/auth/login",
+          "details": [
+              "email: O e-mail é obrigatório."
+          ]
+      }
+      ```
+- **`401 Unauthorized`**: Credenciais inválidas (senha incorreta).
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-30T22:04:00Z",
+          "status": 401,
+          "error": "Unauthorized",
+          "message": "A sua senha está incorreta.",
+          "path": "/auth/login"
+      }
+      ```
+- **`404 Not Found`**: O e-mail fornecido não está cadastrado no sistema.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-30T22:05:00Z",
+          "status": 404,
+          "error": "Not Found",
+          "message": "O email 'naoexiste@example.com' não está cadastrado no sistema.",
+          "path": "/auth/login"
+      }
+      ```
+
+## 2. Endpoints de Gerenciamento de Usuários
+
+Controlador responsável: `UserController`
+Rota base: `/api/users`
+**Autenticação:** Todos os endpoints nesta seção requerem um token JWT Bearer válido no header `Authorization`.
+
+### 2.1. Listar Todos os Usuários
+
+- **Endpoint:** `GET /api/users`
+- **Funcionalidade:** Retorna uma lista de todos os usuários cadastrados.
+- **Autenticação:** Requerida.
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Lista de usuários retornada com sucesso.
+    - **Corpo da Resposta (Array de `UserDto`):**
+      ```json
+      [
+          {
+              "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "name": "Fulano da Silva",
+              "email": "fulano@example.com",
+              "salary": 3000.00,
+              "createdAt": "2025-05-26T14:32:00",
+              "updatedAt": "2025-05-27T09:15:20"
+          },
+          {
+              "id": "ab123c45-6789-0123-b4fc-5d074e77bfa7",
+              "name": "Ciclana de Souza",
+              "email": "ciclana@example.com",
+              "salary": 4500.50,
+              "createdAt": "2025-05-28T11:00:00",
+              "updatedAt": "2025-05-29T16:45:10"
+          }
+      ]
+      ```
+      Se não houver usuários, retorna uma lista vazia `[]`.
+
+#### Possíveis Erros
+
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`403 Forbidden`**: O usuário autenticado não tem permissão para acessar este recurso.
+
+### 2.2. Buscar Usuário por ID
+
+- **Endpoint:** `GET /api/users/{id}`
+- **Funcionalidade:** Retorna os dados de um usuário específico com base no seu ID.
+- **Autenticação:** Requerida.
+
+#### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição        | Exemplo                                |
+|-----------|--------|-------------|------------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID do usuário.   | `3fa85f64-5717-4562-b3fc-2c963f66afa6` |
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Usuário encontrado.
+    - **Corpo da Resposta (`UserDto`):**
+      ```json
+      {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "name": "Fulano da Silva",
+          "email": "fulano@example.com",
+          "salary": 3000.00,
+          "createdAt": "2025-05-26T14:32:00",
+          "updatedAt": "2025-05-27T09:15:20"
+      }
+      ```
+
+#### Possíveis Erros
+
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`403 Forbidden`**: O usuário autenticado não tem permissão para acessar este recurso (ex: tentar acessar dados de outro usuário, se a regra de negócio impedir).
+- **`404 Not Found`**: Usuário com o ID especificado não encontrado.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T10:10:00Z",
+          "status": 404,
+          "error": "Not Found",
+          "message": "Usuário não encontrado com ID: 3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "path": "/api/users/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+      }
+      ```
+
+### 2.3. Atualizar Usuário
+
+- **Endpoint:** `PUT /api/users/{id}`
+- **Funcionalidade:** Atualiza os dados de um usuário existente. Permite atualizar nome, senha e/ou salário. O e-mail não pode ser alterado por este endpoint.
+- **Autenticação:** Requerida. O usuário só pode atualizar seus próprios dados (a menos que seja um administrador, dependendo das regras de negócio implementadas no `UserService`).
+
+#### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                  | Exemplo                                |
+|-----------|--------|-------------|----------------------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID do usuário a ser atualizado. | `3fa85f64-5717-4562-b3fc-2c963f66afa6` |
+
+#### Corpo da Requisição (`UserUpdateDto`)
+
+| Campo    | Tipo       | Obrigatório | Descrição                                                                                                | Validações                                                                                                                                                                                                                                                                                                                         | Exemplo                     |
+|----------|------------|-------------|----------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------|
+| `name`   | String     | Não         | Novo nome completo do usuário.                                                                           | Se fornecido, deve ter entre 5 e 100 caracteres. Deve conter ao menos duas palavras, cada uma com no mínimo 2 letras. Somente letras e apóstrofos são permitidos. Não pode ser vazio ou conter apenas espaços.                                                                                                                             | "Fulano de Tal Silva"       |
+| `password` | String     | Não         | Nova senha de acesso do usuário.                                                                         | Se fornecida, deve ter no mínimo 6 caracteres e conter ao menos uma letra e um número. Não pode ser em branco se o campo estiver presente.                                                                                                                                                                                                | "NovaSenha@456"             |
+| `salary` | BigDecimal | Não         | Novo salário mensal do usuário.                                                                          | Se fornecido, deve ser um valor numérico maior ou igual a zero.                                                                                                                                                                                                                                                                    | `3800.75`                   |
+
+*Nota: Pelo menos um dos campos (`name`, `password`, `salary`) deve ser fornecido para atualização.*
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Usuário atualizado com sucesso.
+    - **Corpo da Resposta (`UserDto`):**
+      ```json
+      {
+          "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "name": "Fulano de Tal Silva", // Nome atualizado
+          "email": "fulano@example.com", // E-mail permanece o mesmo
+          "salary": 3800.75, // Salário atualizado
+          "createdAt": "2025-05-26T14:32:00",
+          "updatedAt": "2025-05-31T10:15:00" // Timestamp de atualização modificado
+      }
+      ```
+
+#### Possíveis Erros
+
+- **`400 Bad Request`**: Dados de atualização inválidos.
+    - **Motivos:**
+        - `name`: Vazio, menos de duas palavras, caracteres inválidos, ou fora do tamanho permitido.
+        - `password`: Menos de 6 caracteres, não contém letras e números.
+        - `salary`: Valor negativo.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T10:20:00Z",
+          "status": 400,
+          "error": "Bad Request",
+          "message": "A nova senha está fraca, ela precisa possuir ao menos letras e números.", // Ou outra mensagem de validação específica
+          "path": "/api/users/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+      }
+      ```
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`403 Forbidden`**: Tentativa de atualizar dados de outro usuário sem permissão.
+- **`404 Not Found`**: Usuário com o ID especificado não encontrado.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T10:22:00Z",
+          "status": 404,
+          "error": "Not Found",
+          "message": "Usuário não encontrado com ID: 3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "path": "/api/users/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+      }
+      ```
+
+### 2.4. Remover Usuário
+
+- **Endpoint:** `DELETE /api/users/{id}`
+- **Funcionalidade:** Remove um usuário do sistema com base no seu ID.
+- **Autenticação:** Requerida. Geralmente, apenas administradores ou o próprio usuário podem realizar esta ação.
+
+#### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                  | Exemplo                                |
+|-----------|--------|-------------|----------------------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID do usuário a ser removido. | `3fa85f64-5717-4562-b3fc-2c963f66afa6` |
+
+#### Respostas Esperadas
+
+- **`204 No Content`**: Usuário removido com sucesso. Nenhum corpo de resposta.
+
+#### Possíveis Erros
+
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`403 Forbidden`**: Tentativa de remover outro usuário sem permissão.
+- **`404 Not Found`**: Usuário com o ID especificado não encontrado para exclusão.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T10:25:00Z",
+          "status": 404,
+          "error": "Not Found",
+          "message": "Usuário não encontrado com ID: 3fa85f64-5717-4562-b3fc-2c963f66afa6 para exclusão.",
+          "path": "/api/users/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+      }
+      ```
+
+## 3. Modelos de Dados (DTOs)
+
+### 3.1. `UserDto`
+Representa os dados de um usuário retornados pela API.
+
+| Campo       | Tipo          | Descrição                                  | Exemplo                                |
+|-------------|---------------|--------------------------------------------|----------------------------------------|
+| `id`        | UUID          | Identificador único do usuário.            | `3fa85f64-5717-4562-b3fc-2c963f66afa6` |
+| `name`      | String        | Nome completo do usuário.                  | "Fulano da Silva"                      |
+| `email`     | String        | E-mail de login.                           | "fulano@example.com"                   |
+| `salary`    | BigDecimal    | Salário do usuário.                        | `3000.00`                              |
+| `createdAt` | LocalDateTime | Timestamp de criação do registro.          | "2025-05-26T14:32:00"                  |
+| `updatedAt` | LocalDateTime | Timestamp da última atualização do registro. | "2025-05-27T09:15:20"                  |
+
+### 3.2. `UserRegisterDto`
+Dados para registro de um novo usuário (detalhado na seção [1.1](#11-registrar-novo-usuário)).
+
+### 3.3. `LoginDto`
+Credenciais para autenticação (detalhado na seção [1.2](#12-autenticar-usuário-login)).
+
+### 3.4. `UserUpdateDto`
+Dados para atualização de um usuário existente (detalhado na seção [2.3](#23-atualizar-usuário)).
+
+### 3.5. `ErrorResponseDto` (Implícito)
+Estrutura padrão para respostas de erro.
+
+| Campo       | Tipo          | Descrição                                                          |
+|-------------|---------------|--------------------------------------------------------------------|
+| `timestamp` | String        | Data e hora da ocorrência do erro (ISO 8601).                      |
+| `status`    | Integer       | Código de status HTTP.                                             |
+| `error`     | String        | Descrição curta do erro (ex: "Not Found", "Bad Request").          |
+| `message`   | String        | Mensagem detalhada sobre o erro.                                   |
+| `path`      | String        | O caminho do endpoint que foi chamado.                             |
+| `details`   | Array<String> | (Opcional) Lista de mensagens de erro específicas (validação).     |
+
+
+
+
 # Bancos
 
 Esta documentação descreve a API para gerenciamento de bancos. Através dela, é possível criar, listar, visualizar, atualizar e remover bancos, bem como gerenciar os valores associados a eles.
