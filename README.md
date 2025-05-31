@@ -395,6 +395,394 @@ Estrutura padrão para respostas de erro.
 | `details`   | Array<String> | (Opcional) Lista de mensagens de erro específicas (validação).     |
 
 
+# Categoria
+4. Endpoints de Gerenciamento de Categorias
+
+Controlador responsável: `CategoryController`
+Rota base: `/api/categories`
+
+**Autenticação:** Todos os endpoints nesta seção requerem autenticação. O sistema identifica o usuário autenticado através do token JWT para garantir que as operações sejam realizadas apenas nas categorias pertencentes a ele.
+
+### 4.1. Listar Todas as Categorias do Usuário
+
+- **Endpoint:** `GET /api/categories`
+- **Funcionalidade:** Retorna uma lista de todas as categorias pertencentes ao usuário autenticado.
+- **Autenticação:** Requerida.
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Lista de categorias retornada com sucesso.
+    - **Corpo da Resposta (Array de `CategoryDetailResponseDto`):**
+      ```json
+      [
+          {
+              "user": {
+                  "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241",
+                  "name": "Usuário Exemplo"
+              },
+              "category": {
+                  "id": "7fa85f64-1234-4562-b3fc-2c963f66afa6",
+                  "name": "Alimentação",
+                  "description": "Gastos com supermercado e restaurantes",
+                  "createdAt": "2025-05-18T13:45:00",
+                  "updatedAt": "2025-05-18T14:00:00"
+              }
+          },
+          {
+              "user": {
+                  "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241",
+                  "name": "Usuário Exemplo"
+              },
+              "category": {
+                  "id": "8ab86e75-2345-5673-c4fd-3d074f88cgb7",
+                  "name": "Transporte",
+                  "description": "Gastos com combustível e transporte público",
+                  "createdAt": "2025-05-19T10:20:00",
+                  "updatedAt": "2025-05-19T11:05:00"
+              }
+          }
+      ]
+      ```
+      Se o usuário não possuir categorias, retorna uma lista vazia `[]`.
+
+#### Possíveis Erros
+
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`404 Not Found`**: Usuário autenticado não encontrado no sistema (raro, mas possível se o usuário for deletado após a emissão do token).
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T11:00:00Z",
+          "status": 404,
+          "error": "Not Found",
+          "message": "Usuário autenticado não encontrado com email usuario@example.com",
+          "path": "/api/categories"
+      }
+      ```
+
+### 4.2. Buscar Categoria por ID
+
+- **Endpoint:** `GET /api/categories/{id}`
+- **Funcionalidade:** Retorna os dados de uma categoria específica do usuário autenticado, com base no ID da categoria.
+- **Autenticação:** Requerida.
+
+#### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição           | Exemplo                                |
+|-----------|--------|-------------|---------------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID da categoria.    | `7fa85f64-1234-4562-b3fc-2c963f66afa6` |
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Categoria encontrada.
+    - **Corpo da Resposta (`CategoryDetailResponseDto`):**
+      ```json
+      {
+          "user": {
+              "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241",
+              "name": "Usuário Exemplo"
+          },
+          "category": {
+              "id": "7fa85f64-1234-4562-b3fc-2c963f66afa6",
+              "name": "Alimentação",
+              "description": "Gastos com supermercado e restaurantes",
+              "createdAt": "2025-05-18T13:45:00",
+              "updatedAt": "2025-05-18T14:00:00"
+          }
+      }
+      ```
+
+#### Possíveis Erros
+
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`404 Not Found`**:
+    - Usuário autenticado não encontrado.
+    - Categoria com o ID especificado não encontrada ou não pertence ao usuário autenticado.
+    - **Exemplo de Corpo da Resposta (Categoria não encontrada):**
+      ```json
+      {
+          "timestamp": "2025-05-31T11:05:00Z",
+          "status": 404,
+          "error": "Not Found",
+          "message": "Categoria com ID 7fa85f64-1234-4562-b3fc-2c963f66afa6 não encontrada ou não pertence ao usuário especificado.",
+          "path": "/api/categories/7fa85f64-1234-4562-b3fc-2c963f66afa6"
+      }
+      ```
+
+### 4.3. Criar Nova Categoria
+
+- **Endpoint:** `POST /api/categories`
+- **Funcionalidade:** Cria uma nova categoria para o usuário autenticado.
+- **Autenticação:** Requerida.
+
+#### Corpo da Requisição (`CategoryCreateDto`)
+
+| Campo         | Tipo   | Obrigatório | Descrição                                                                 | Validações                                                                 | Exemplo                                   |
+|---------------|--------|-------------|---------------------------------------------------------------------------|----------------------------------------------------------------------------|-------------------------------------------|
+| `name`        | String | Sim         | Nome da categoria.                                                        | Obrigatório. Deve ter entre 1 e 100 caracteres.                            | "Lazer"                                   |
+| `description` | String | Não         | Descrição detalhada opcional da categoria. Se não informado, assume valor padrão ("Campo não Informado pelo Usuário"). | Máximo de 255 caracteres.                                                  | "Gastos com cinema, parques, shows, etc." |
+
+#### Respostas Esperadas
+
+- **`201 Created`**: Categoria criada com sucesso.
+    - **Corpo da Resposta (`CategoryDetailResponseDto`):**
+      ```json
+      {
+          "user": {
+              "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241",
+              "name": "Usuário Exemplo"
+          },
+          "category": {
+              "id": "9bc97f86-3456-6784-d5ef-4e185g99dhc8", // Novo ID gerado
+              "name": "Lazer",
+              "description": "Gastos com cinema, parques, shows, etc.",
+              "createdAt": "2025-05-31T11:10:00Z",
+              "updatedAt": "2025-05-31T11:10:00Z"
+          }
+      }
+      ```
+    - **Headers:** `Location` contendo a URI do novo recurso criado (ex: `/api/categories/9bc97f86-3456-6784-d5ef-4e185g99dhc8`).
+
+#### Possíveis Erros
+
+- **`400 Bad Request`**: Dados de criação inválidos.
+    - **Motivos:** Campo `name` faltando ou fora das validações de tamanho. `description` excede o tamanho máximo.
+    - **Exemplo de Corpo da Resposta (Nome faltando):**
+      ```json
+      {
+          "timestamp": "2025-05-31T11:12:00Z",
+          "status": 400,
+          "error": "Erro de Validação de Campo",
+          "message": "Um ou mais campos falharam na validação. Veja os detalhes.",
+          "path": "/api/categories",
+          "details": [
+              "name: O campo name é obrigatório, pois não é possível criar uma categoria sem nome."
+          ]
+      }
+      ```
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`404 Not Found`**: Usuário autenticado não encontrado.
+
+### 4.4. Atualizar Categoria Existente
+
+- **Endpoint:** `PUT /api/categories/{id}`
+- **Funcionalidade:** Atualiza os dados (nome e/ou descrição) de uma categoria existente do usuário autenticado.
+- **Autenticação:** Requerida.
+
+#### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                     | Exemplo                                |
+|-----------|--------|-------------|-------------------------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID da categoria a atualizar.  | `7fa85f64-1234-4562-b3fc-2c963f66afa6` |
+
+#### Corpo da Requisição (`CategoryUpdateDto`)
+*Pelo menos um dos campos deve ser fornecido para atualização.*
+
+| Campo         | Tipo   | Obrigatório | Descrição                                                                                                | Validações                                                                                               | Exemplo                                   |
+|---------------|--------|-------------|----------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|-------------------------------------------|
+| `name`        | String | Não         | Novo nome da categoria. Se fornecido, não pode ser vazio.                                                | Deve ter entre 1 e 100 caracteres.                                                                       | "Alimentação Geral"                       |
+| `description` | String | Não         | Nova descrição detalhada da categoria. Envie uma string vazia `""` para limpar ou não envie para manter a atual. | Máximo de 255 caracteres.                                                                                | "Todos os gastos com alimentação"         |
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Categoria atualizada com sucesso.
+    - **Corpo da Resposta (`CategoryDetailResponseDto`):**
+      ```json
+      {
+          "user": {
+              "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241",
+              "name": "Usuário Exemplo"
+          },
+          "category": {
+              "id": "7fa85f64-1234-4562-b3fc-2c963f66afa6",
+              "name": "Alimentação Geral", // Nome atualizado
+              "description": "Todos os gastos com alimentação", // Descrição atualizada
+              "createdAt": "2025-05-18T13:45:00",
+              "updatedAt": "2025-05-31T11:15:00Z" // Timestamp de atualização modificado
+          }
+      }
+      ```
+
+#### Possíveis Erros
+
+- **`400 Bad Request`**: Dados de atualização inválidos.
+    - **Motivos:** `name` fornecido mas vazio ou fora das validações de tamanho. `description` excede o tamanho máximo.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T11:18:00Z",
+          "status": 400,
+          "error": "Bad Request",
+          "message": "O nome da categoria, se fornecido para atualização, não pode ser vazio ou apenas espaços.",
+          "path": "/api/categories/7fa85f64-1234-4562-b3fc-2c963f66afa6"
+      }
+      ```
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`404 Not Found`**:
+    - Usuário autenticado não encontrado.
+    - Categoria com o ID especificado não encontrada ou não pertence ao usuário autenticado.
+
+### 4.5. Remover Categoria por ID
+
+- **Endpoint:** `DELETE /api/categories/{id}`
+- **Funcionalidade:** Remove uma categoria específica do usuário autenticado.
+- **Autenticação:** Requerida.
+
+#### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                   | Exemplo                                |
+|-----------|--------|-------------|-----------------------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID da categoria a remover.  | `7fa85f64-1234-4562-b3fc-2c963f66afa6` |
+
+#### Respostas Esperadas
+
+- **`204 No Content`**: Categoria removida com sucesso. Nenhum corpo de resposta.
+
+#### Possíveis Erros
+
+- **`400 Bad Request` (InvalidOperationException):** A categoria está sendo utilizada em outras partes do sistema (ex: despesas) e não pode ser deletada.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T11:20:00Z",
+          "status": 400,
+          "error": "Bad Request",
+          "message": "Não é possível deletar a categoria 'Alimentação' (ID: 7fa85f64-1234-4562-b3fc-2c963f66afa6) pois ela está sendo utilizada em outras partes do sistema (ex: despesas).",
+          "path": "/api/categories/7fa85f64-1234-4562-b3fc-2c963f66afa6"
+      }
+      ```
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`404 Not Found`**:
+    - Usuário autenticado não encontrado.
+    - Categoria com o ID especificado não encontrada ou não pertence ao usuário autenticado.
+
+### 4.6. Atualizar TODAS as Categorias do Usuário (Em Lote)
+
+- **Endpoint:** `PUT /api/categories/user-all`
+- **Funcionalidade:** Atualiza todas as categorias do usuário autenticado com os mesmos dados (nome e/ou descrição) fornecidos.
+- **Autenticação:** Requerida.
+
+#### Corpo da Requisição (`CategoryMassUpdateDto`)
+*Pelo menos um dos campos deve ser fornecido para atualização.*
+
+| Campo         | Tipo   | Obrigatório | Descrição                                                                                                                | Validações                                                                                               | Exemplo                     |
+|---------------|--------|-------------|--------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|-----------------------------|
+| `name`        | String | Não         | Novo nome a ser aplicado a TODAS as categorias do usuário. Se fornecido, não pode ser vazio.                             | Deve ter entre 1 e 100 caracteres.                                                                       | "Categoria Padronizada"     |
+| `description` | String | Não         | Nova descrição a ser aplicada a TODAS as categorias do usuário. Envie uma string vazia `""` para limpar em todas.        | Máximo de 255 caracteres.                                                                                | "Descrição Padrão para Todas" |
+
+#### Respostas Esperadas
+
+- **`200 OK`**: Todas as categorias do usuário foram atualizadas com sucesso (ou nenhuma alteração foi necessária).
+    - **Corpo da Resposta (Array de `CategoryDetailResponseDto`):** Lista de todas as categorias do usuário com os dados atualizados. Similar à resposta do endpoint `GET /api/categories`. Se nenhuma categoria foi alterada (ex: os novos valores já eram os atuais, ou nenhum campo foi enviado no DTO), a lista original é retornada.
+
+#### Possíveis Erros
+
+- **`400 Bad Request`**: Dados de atualização inválidos.
+    - **Motivos:** `name` fornecido mas vazio ou fora das validações de tamanho. `description` excede o tamanho máximo.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T11:25:00Z",
+          "status": 400,
+          "error": "Bad Request",
+          "message": "O nome, se fornecido para atualização em massa, não pode ser vazio ou apenas espaços.",
+          "path": "/api/categories/user-all"
+      }
+      ```
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`404 Not Found`**: Usuário autenticado não encontrado.
+
+### 4.7. Deletar TODAS as Categorias do Usuário (Em Lote)
+
+- **Endpoint:** `DELETE /api/categories/user-all`
+- **Funcionalidade:** Deleta todas as categorias pertencentes ao usuário autenticado.
+- **Autenticação:** Requerida.
+
+#### Respostas Esperadas
+
+- **`204 No Content`**: Todas as categorias do usuário foram deletadas com sucesso (ou o usuário não tinha categorias). Nenhum corpo de resposta.
+
+#### Possíveis Erros
+
+- **`400 Bad Request` (InvalidOperationException):** Não foi possível deletar todas as categorias porque uma ou mais delas estão em uso por despesas (ou outras entidades vinculadas). A mensagem de erro indicará qual categoria está causando o problema.
+    - **Exemplo de Corpo da Resposta:**
+      ```json
+      {
+          "timestamp": "2025-05-31T11:30:00Z",
+          "status": 400,
+          "error": "Bad Request",
+          "message": "Não é possível deletar todas as categorias. A categoria 'Transporte' (ID: 8ab86e75-2345-5673-c4fd-3d074f88cgb7) está em uso por despesas.",
+          "path": "/api/categories/user-all"
+      }
+      ```
+- **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+- **`404 Not Found`**: Usuário autenticado não encontrado.
+
+## 5. Modelos de Dados (DTOs) para Categorias
+
+### 5.1. `CategoryCreateDto`
+Dados para criar uma nova categoria.
+
+| Campo         | Tipo   | Descrição                                                                 |
+|---------------|--------|---------------------------------------------------------------------------|
+| `name`        | String | Nome da categoria (obrigatório, 1-100 caracteres).                        |
+| `description` | String | Descrição opcional da categoria (máx 255 caracteres).                     |
+
+### 5.2. `CategoryUpdateDto`
+Dados para atualizar uma categoria existente. Campos não fornecidos não são alterados.
+
+| Campo         | Tipo   | Descrição                                                                                                |
+|---------------|--------|----------------------------------------------------------------------------------------------------------|
+| `name`        | String | Novo nome da categoria (opcional, 1-100 caracteres se fornecido).                                        |
+| `description` | String | Nova descrição opcional da categoria (máx 255 caracteres). Pode ser string vazia para limpar.            |
+
+### 5.3. `CategoryMassUpdateDto`
+Dados para atualizar todas as categorias de um usuário com os mesmos valores.
+
+| Campo         | Tipo   | Descrição                                                                                                |
+|---------------|--------|----------------------------------------------------------------------------------------------------------|
+| `name`        | String | Novo nome para TODAS as categorias (opcional, 1-100 caracteres se fornecido).                            |
+| `description` | String | Nova descrição para TODAS as categorias (opcional, máx 255 caracteres). Pode ser string vazia para limpar.|
+
+### 5.4. `CategoryDataDto`
+Representa os dados detalhados de uma categoria. Usado dentro do `CategoryDetailResponseDto`.
+
+| Campo         | Tipo          | Descrição                                  | Exemplo                                   |
+|---------------|---------------|--------------------------------------------|-------------------------------------------|
+| `id`          | UUID          | Identificador único da categoria.          | `7fa85f64-1234-4562-b3fc-2c963f66afa6`    |
+| `name`        | String        | Nome da categoria.                         | "Alimentação"                             |
+| `description` | String        | Descrição detalhada da categoria.          | "Gastos com supermercado e restaurantes"  |
+| `createdAt`   | LocalDateTime | Timestamp de criação da categoria.         | "2025-05-18T13:45:00"                     |
+| `updatedAt`   | LocalDateTime | Timestamp da última atualização da categoria. | "2025-05-18T14:00:00"                     |
+
+### 5.5. `UserSimpleDto`
+Representa dados simplificados do usuário. Usado dentro do `CategoryDetailResponseDto`.
+
+| Campo | Tipo   | Descrição                 | Exemplo                                   |
+|-------|--------|---------------------------|-------------------------------------------|
+| `id`  | UUID   | Identificador único do usuário. | `2ec7d1c2-a306-4ffe-9603-dc39408d5241`    |
+| `name`| String | Nome do usuário.          | "Usuário Exemplo"                         |
+
+### 5.6. `CategoryDetailResponseDto`
+Resposta padrão para a maioria das operações de categoria, contendo dados do usuário e da categoria.
+
+| Campo      | Tipo              | Descrição                         |
+|------------|-------------------|-----------------------------------|
+| `user`     | `UserSimpleDto`   | Dados simplificados do usuário.   |
+| `category` | `CategoryDataDto` | Dados detalhados da categoria.    |
+
+### 5.7. `CategoryDto` (Referência)
+Este DTO (`CategoryDto.java`) parece ser uma versão mais completa que inclui `userId` e validações, podendo ser usado internamente ou para cenários onde o `userId` é explicitamente necessário no corpo da requisição/resposta, mas o `CategoryDetailResponseDto` é o principal DTO de resposta nos endpoints atuais.
+
+| Campo         | Tipo          | Descrição                                                                 |
+|---------------|---------------|---------------------------------------------------------------------------|
+| `id`          | UUID          | UUID da categoria (somente leitura).                                      |
+| `userId`      | UUID          | UUID do usuário dono da categoria (somente leitura).                      |
+| `name`        | String        | Nome da categoria (obrigatório na criação, 1-100 caracteres).             |
+| `description` | String        | Descrição detalhada da categoria (opcional, padrão se não informado).     |
+| `createdAt`   | LocalDateTime | Timestamp de criação (somente leitura).                                   |
+| `updatedAt`   | LocalDateTime | Timestamp da última atualização (somente leitura).                        |
+
 
 
 # Bancos
