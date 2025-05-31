@@ -1286,4 +1286,312 @@ Meios de recebimento possíveis:
 -   **Paginação**: A listagem de contas a receber (`GET /api/receivables`) suporta paginação para lidar com grandes volumes de dados.
 -   **Atualização de Contas Recebidas**: Não é permitido atualizar contas que já foram marcadas como `RECEIVED` ou `RECEIVED_LATE`.
 
+---
+
+## 7. Gerenciamento de Despesas
+
+Esta seção detalha os endpoints para o gerenciamento das despesas do usuário.
+
+Controlador responsável: `ExpenseController`
+Rota base: `/api/expenses`
+**Autenticação:** Requerida para todos os endpoints nesta seção.
+
+### 7.1. Objeto Despesa (`ExpenseDetailResponseDto`)
+
+Representa os dados detalhados de uma despesa, como retornado pela API. Este DTO aninha informações do usuário e os dados completos da despesa.
+
+#### 7.1.1. Estrutura `ExpenseDetailResponseDto`
+
+| Campo     | Tipo                  | Descrição                                                                 |
+|-----------|-----------------------|---------------------------------------------------------------------------|
+| `user`    | `UserSimpleDto`       | Dados simplificados do usuário proprietário (ver [1.3.1](#131-userdto) ou [2.2.5](#225-usersimpledto) para estrutura). |
+| `expense` | `ExpenseDataDto`      | Dados detalhados da despesa (ver estrutura abaixo).                       |
+
+#### 7.1.2. Estrutura `ExpenseDataDto` (Aninhado em `ExpenseDetailResponseDto`)
+
+| Campo         | Tipo                | Descrição                                                                 | Exemplo                                   |
+|---------------|---------------------|---------------------------------------------------------------------------|-------------------------------------------|
+| `id`          | UUID                | UUID da despesa.                                                          | `a1b2c3d4-e5f6-7890-1234-567890abcdef`    |
+| `name`        | String              | Nome da despesa.                                                          | "Conta de Luz"                            |
+| `description` | String              | Descrição detalhada da despesa.                                           | "Pagamento mensal referente a maio"       |
+| `value`       | BigDecimal          | Valor da despesa.                                                         | `150.75`                                  |
+| `expenseDate` | LocalDate           | Data em que a despesa ocorreu (formato `YYYY-MM-DD`).                     | `"2025-05-27"`                            |
+| `category`    | `CategorySimpleDto` | Categoria da despesa (contém `id` e `name` da categoria).                 | `{ "id": "uuid-cat", "name": "Moradia" }` |
+| `bank`        | `BankSimpleDto`     | Banco associado à despesa (opcional, contém `id` e `name` do banco).      | `{ "id": "uuid-bank", "name": "Banco X" }` ou `null` |
+| `createdAt`   | LocalDateTime       | Timestamp de criação da despesa.                                          | `"2025-05-28T10:15:30Z"`                  |
+| `updatedAt`   | LocalDateTime       | Timestamp da última atualização da despesa.                               | `"2025-05-28T10:20:00Z"`                  |
+
+*(Nota: `CategorySimpleDto` e `BankSimpleDto` são DTOs simplificados contendo `id` e `name` das respectivas entidades).*
+
+### 7.2. Endpoints de Despesas
+
+#### 7.2.1. Criar Nova Despesa
+
+-   **Endpoint:** `POST /api/expenses`
+-   **Funcionalidade:** Cria uma nova despesa para o usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Corpo da Requisição (`ExpenseCreateDto`)
+
+| Campo         | Tipo       | Obrigatório | Descrição                                                     | Validações                                      | Exemplo                                   |
+|---------------|------------|-------------|---------------------------------------------------------------|-------------------------------------------------|-------------------------------------------|
+| `name`        | String     | Sim         | Nome da despesa.                                              | 1-100 caracteres.                               | "Conta de luz"                            |
+| `description` | String     | Não         | Descrição opcional. Padrão: "Campo não Informado pelo Usuário". | -                                               | "Pagamento mensal referente a maio"       |
+| `value`       | BigDecimal | Sim         | Valor da despesa.                                             | Deve ser maior que 0 (`@DecimalMin("0.01")`).   | `150.75`                                  |
+| `categoryId`  | UUID       | Sim         | ID da categoria associada.                                    | Obrigatório.                                    | `b9244a85-9d51-46e7-b626-259259862ad1`    |
+| `bankId`      | UUID       | Não         | ID do banco para associar à despesa (opcional).               | -                                               | `daa0e2a7-2ad6-42b9-8271-1d7e9facc027`    |
+| `expenseDate` | LocalDate  | Sim         | Data em que a despesa ocorreu (formato `YYYY-MM-DD`).         | Obrigatório.                                    | `"2025-05-27"`                            |
+
+##### Respostas Esperadas
+
+-   **`201 Created`**: Despesa criada com sucesso.
+    -   **Corpo da Resposta (`ExpenseDetailResponseDto`):** Detalhes da despesa criada (conforme estrutura em [7.1](#71-objeto-despesa-expensedetailresponsedto)).
+    -   **Headers:** `Location` contendo a URI do novo recurso criado (ex: `/api/expenses/a1b2c3d4-e5f6-7890-1234-567890abcdef`).
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados inválidos fornecidos.
+    -   **Motivos:** Campos obrigatórios (`name`, `value`, `categoryId`, `expenseDate`) faltando ou inválidos (ex: `value` não positivo, `name` fora do tamanho).
+-   **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+-   **`404 Not Found`**:
+    -   Usuário autenticado não encontrado.
+    -   Categoria com o `categoryId` fornecido não encontrada ou não pertence ao usuário.
+    -   Banco com o `bankId` (se fornecido) não encontrado ou não pertence ao usuário.
+-   **`500 Internal Server Error`**.
+
+#### 7.2.2. Listar Todas as Despesas do Usuário
+
+-   **Endpoint:** `GET /api/expenses`
+-   **Funcionalidade:** Retorna uma lista de todas as despesas pertencentes ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Lista de despesas retornada com sucesso.
+    -   **Corpo da Resposta (Array de `ExpenseDetailResponseDto`):**
+        ```json
+        [
+            {
+                "user": { "id": "uuid-user", "name": "Usuário Exemplo" },
+                "expense": {
+                    "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                    "name": "Aluguel",
+                    "description": "Pagamento mensal",
+                    "value": 1200.00,
+                    "expenseDate": "2025-05-05",
+                    "category": { "id": "uuid-cat-moradia", "name": "Moradia" },
+                    "bank": { "id": "uuid-bank-main", "name": "Banco Principal" },
+                    "createdAt": "2025-05-05T09:00:00Z",
+                    "updatedAt": "2025-05-05T09:00:00Z"
+                }
+            }
+            // ... outras despesas
+        ]
+        ```
+        Se o usuário não possuir despesas, retorna uma lista vazia `[]`.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Usuário autenticado não encontrado.
+-   **`500 Internal Server Error`**.
+
+#### 7.2.3. Buscar Despesa Específica por ID
+
+-   **Endpoint:** `GET /api/expenses/{id}`
+-   **Funcionalidade:** Recupera os detalhes de uma despesa específica pelo seu ID, se pertencer ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                       |
+|-----------|--------|-------------|---------------------------------|
+| `id`      | UUID   | Sim         | ID da despesa a ser buscada.    |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Despesa encontrada.
+    -   **Corpo da Resposta (`ExpenseDetailResponseDto`):** Detalhes da despesa (conforme estrutura em [7.1](#71-objeto-despesa-expensedetailresponsedto)).
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Despesa não encontrada ou não pertence ao usuário.
+    -   Mensagem: `Despesa com ID {id} não encontrada ou não pertence ao usuário.`
+-   **`500 Internal Server Error`**.
+
+#### 7.2.4. Atualizar Despesa Existente
+
+-   **Endpoint:** `PUT /api/expenses/{id}`
+-   **Funcionalidade:** Atualiza uma despesa existente do usuário autenticado. Somente campos não nulos no corpo da requisição serão atualizados.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                          |
+|-----------|--------|-------------|------------------------------------|
+| `id`      | UUID   | Sim         | ID da despesa a ser atualizada.    |
+
+##### Corpo da Requisição (`ExpenseUpdateDto`)
+
+*Apenas os campos a serem alterados precisam ser fornecidos.*
+
+| Campo         | Tipo       | Obrigatório | Descrição                                                     | Validações                                      |
+|---------------|------------|-------------|---------------------------------------------------------------|-------------------------------------------------|
+| `name`        | String     | Não         | Novo nome da despesa.                                         | Se fornecido, não pode ser vazio; 1-100 caracteres. |
+| `description` | String     | Não         | Nova descrição opcional.                                      | -                                               |
+| `value`       | BigDecimal | Não         | Novo valor da despesa.                                        | Se fornecido, deve ser maior que 0.             |
+| `categoryId`  | UUID       | Não         | Novo ID da categoria associada.                               | -                                               |
+| `bankId`      | UUID       | Não         | Novo ID do banco associado (enviar `null` para desassociar).  | -                                               |
+| `expenseDate` | LocalDate  | Não         | Nova data da despesa (formato `YYYY-MM-DD`).                  | -                                               |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Despesa atualizada com sucesso.
+    -   **Corpo da Resposta (`ExpenseDetailResponseDto`):** Detalhes atualizados da despesa.
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados inválidos fornecidos.
+    -   **Motivos:** `name` vazio, `value` não positivo.
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Despesa, usuário, categoria ou banco (se `bankId` fornecido) não encontrado ou não pertence ao usuário.
+    -   Mensagens: `Não é possível editar a despesa (ID: {id}), porque você não possui ela cadastrada.`, `Categoria com ID {categoryId} não encontrada ou não pertence ao usuário.`, `Banco com ID {bankId} não encontrado ou não pertence ao usuário.`
+-   **`500 Internal Server Error`**.
+
+#### 7.2.5. Deletar Despesa
+
+-   **Endpoint:** `DELETE /api/expenses/{id}`
+-   **Funcionalidade:** Deleta uma despesa específica pelo seu ID, se pertencer ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                          |
+|-----------|--------|-------------|------------------------------------|
+| `id`      | UUID   | Sim         | ID da despesa a ser deletada.      |
+
+##### Respostas Esperadas
+
+-   **`204 No Content`**: Despesa deletada com sucesso.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Despesa não encontrada ou não pertence ao usuário.
+    -   Mensagem: `Não é possível deletar a despesa (ID: {id}), porque você não possui ela cadastrada.`
+-   **`500 Internal Server Error`**.
+
+#### 7.2.6. Atualizar TODAS as Despesas do Usuário (Em Lote)
+
+-   **Endpoint:** `PUT /api/expenses/user-all`
+-   **Funcionalidade:** Atualiza campos específicos (descrição, data, categoria, banco) em TODAS as despesas do usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Corpo da Requisição (`ExpenseMassUpdateDto`)
+
+*Apenas os campos a serem aplicados a todas as despesas devem ser fornecidos.*
+
+| Campo         | Tipo      | Obrigatório | Descrição                                                                 | Validações                                      |
+|---------------|-----------|-------------|---------------------------------------------------------------------------|-------------------------------------------------|
+| `description` | String    | Não         | Nova descrição. Envie `""` (string vazia) para limpar.                    | Máx 255 caracteres.                             |
+| `expenseDate` | LocalDate | Não         | Nova data da despesa (formato `YYYY-MM-DD`).                              | -                                               |
+| `categoryId`  | UUID      | Não         | Novo ID de categoria para TODAS as despesas.                              | Categoria deve existir e pertencer ao usuário.  |
+| `bankId`      | UUID      | Não         | Novo ID de banco para TODAS as despesas (enviar `null` para desassociar). | Banco deve existir e pertencer ao usuário.      |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Despesas atualizadas com sucesso.
+    -   **Corpo da Resposta (Array de `ExpenseDetailResponseDto`):** Lista de todas as despesas do usuário com os dados atualizados.
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados inválidos (ex: `description` excede tamanho).
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Usuário, categoria ou banco (se IDs fornecidos) não encontrado.
+-   **`500 Internal Server Error`**.
+
+#### 7.2.7. Deletar TODAS as Despesas do Usuário (Em Lote)
+
+-   **Endpoint:** `DELETE /api/expenses/user-all`
+-   **Funcionalidade:** Deleta todas as despesas pertencentes ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Respostas Esperadas
+
+-   **`204 No Content`**: Todas as despesas do usuário foram deletadas com sucesso.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Usuário autenticado não encontrado.
+-   **`500 Internal Server Error`**.
+
+### 7.3. Modelos de Dados (DTOs) para Despesas
+
+#### 7.3.1. `ExpenseCreateDto`
+Dados para criar uma nova despesa.
+
+| Campo         | Tipo       | Descrição                                                     |
+|---------------|------------|---------------------------------------------------------------|
+| `name`        | String     | Nome da despesa (obrigatório, 1-100 caracteres).              |
+| `description` | String     | Descrição opcional.                                           |
+| `value`       | BigDecimal | Valor da despesa (obrigatório, > 0).                          |
+| `categoryId`  | UUID       | ID da categoria associada (obrigatório).                      |
+| `bankId`      | UUID       | ID do banco associado (opcional).                             |
+| `expenseDate` | LocalDate  | Data da despesa (obrigatório, formato `YYYY-MM-DD`).          |
+
+#### 7.3.2. `ExpenseUpdateDto`
+Dados para atualizar uma despesa existente. Apenas campos fornecidos são atualizados.
+
+| Campo         | Tipo       | Descrição                                                     |
+|---------------|------------|---------------------------------------------------------------|
+| `name`        | String     | Novo nome (opcional, 1-100 caracteres se fornecido).          |
+| `description` | String     | Nova descrição (opcional).                                    |
+| `value`       | BigDecimal | Novo valor (opcional, > 0 se fornecido).                      |
+| `categoryId`  | UUID       | Novo ID da categoria (opcional).                              |
+| `bankId`      | UUID       | Novo ID do banco (opcional, `null` para desassociar).         |
+| `expenseDate` | LocalDate  | Nova data da despesa (opcional, formato `YYYY-MM-DD`).        |
+
+#### 7.3.3. `ExpenseMassUpdateDto`
+Dados para atualizar campos específicos em todas as despesas de um usuário.
+
+| Campo         | Tipo      | Descrição                                                                 |
+|---------------|-----------|---------------------------------------------------------------------------|
+| `description` | String    | Nova descrição para todas as despesas (opcional, máx 255 caracteres).     |
+| `expenseDate` | LocalDate | Nova data para todas as despesas (opcional, formato `YYYY-MM-DD`).        |
+| `categoryId`  | UUID      | Novo ID de categoria para todas as despesas (opcional).                   |
+| `bankId`      | UUID      | Novo ID de banco para todas as despesas (opcional, `null` para desassociar).|
+
+#### 7.3.4. `ExpenseDataDto`
+Estrutura detalhada dos dados de uma despesa (usada dentro de `ExpenseDetailResponseDto`). Detalhada em [7.1.2](#712-estrutura-expensedatadto-aninhado-em-expensedetailresponsedto).
+
+#### 7.3.5. `ExpenseDetailResponseDto`
+Resposta padrão para a maioria das operações de despesa (estrutura detalhada em [7.1.1](#711-estrutura-expensedetailresponsedto)).
+
+#### 7.3.6. `ExpenseDto` (Referência)
+DTO mais simples que pode ser usado internamente ou para outros cenários. Contém IDs e nomes para categoria e banco, em vez de objetos aninhados.
+
+| Campo             | Tipo          | Descrição                                                     |
+|-------------------|---------------|---------------------------------------------------------------|
+| `id`              | UUID          | UUID da despesa.                                              |
+| `name`            | String        | Nome da despesa.                                              |
+| `description`     | String        | Descrição.                                                    |
+| `value`           | BigDecimal    | Valor.                                                        |
+| `expenseDate`     | LocalDate     | Data da despesa.                                              |
+| `categoryId`      | UUID          | UUID da categoria.                                            |
+| `categoryName`    | String        | Nome da categoria.                                            |
+| `bankId`          | UUID          | UUID do banco (pode ser nulo).                                |
+| `bankDisplayName` | String        | Nome/Status do banco.                                         |
+| `createdAt`       | LocalDateTime | Timestamp de criação.                                         |
+| `updatedAt`       | LocalDateTime | Timestamp da última atualização.                                |
+
+### 7.4. Considerações Importantes para Despesas
+
+-   **Propriedade de Dados**: Todas as despesas são vinculadas ao usuário autenticado.
+-   **Associação com Categoria**: Toda despesa deve ser associada a uma categoria existente e pertencente ao usuário.
+-   **Associação com Banco**: Uma despesa pode, opcionalmente, ser associada a um banco existente e pertencente ao usuário.
+-   **Validação de Valores**: O valor da despesa (`value`) deve ser sempre positivo.
+-   **Operações em Lote**: A API permite atualizar campos específicos ou deletar todas as despesas de um usuário de uma vez.
+
 
