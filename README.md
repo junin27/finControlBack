@@ -801,3 +801,170 @@ Representa os dados detalhados de um cofre.
 -   **Atualização de Valor do Cofre**: Não por `PUT /api/vaults/{vaultId}`; requereria outros endpoints.
 -   **Deleção de Cofre Não Vinculado com Saldo**: Impedida para evitar perda de fundos.
 
+---
+
+## 5. Gerenciamento de Renda Extra (Entradas de Dinheiro)
+
+Esta seção detalha os endpoints para o gerenciamento de entradas de renda extra do usuário.
+
+Controlador responsável: `ExtraIncomeController`
+Rota base: `/api/extra-income`
+**Autenticação:** Requerida para todos os endpoints nesta seção.
+
+### 5.1. Objeto Renda Extra (`ExtraIncome` - Entidade Principal)
+
+Representa uma entrada de renda extra.
+
+| Campo         | Tipo          | Descrição                                                                 | Exemplo (quando aplicável) |
+|---------------|---------------|---------------------------------------------------------------------------|----------------------------|
+| `id`          | Long          | Identificador único da renda extra (gerado automaticamente).              | `101`                      |
+| `user`        | Object        | Usuário proprietário (contém `id`, `name`, etc. - serialização pode variar). | `{ "id": "uuid-user", ... }` |
+| `category`    | Object        | Categoria associada (contém `id`, `name`, etc. - serialização pode variar).| `{ "id": "uuid-category", ... }` |
+| `amount`      | BigDecimal    | Valor da renda extra.                                                     | `350.00`                   |
+| `bank`        | Object        | Banco associado (opcional, contém `id`, `name`, etc. - serialização pode variar). | `{ "id": "uuid-bank", ... }` ou `null` |
+| `description` | String        | Descrição opcional da renda extra.                                        | "Freelance de design"      |
+| `date`        | LocalDate     | Data da entrada da renda extra.                                           | "2025-05-18"               |
+
+*(Nota: A representação exata de `user`, `category` e `bank` no JSON de resposta pode variar dependendo da configuração de serialização do Jackson e do estado de carregamento das entidades LAZY. Geralmente, incluirão pelo menos os IDs).*
+
+### 5.2. Endpoints de Renda Extra
+
+#### 5.2.1. Criar Nova Renda Extra
+
+-   **Endpoint:** `POST /api/extra-income`
+-   **Funcionalidade:** Cria uma nova entrada de renda extra para o usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Corpo da Requisição (`ExtraIncomeDto`)
+
+| Campo         | Tipo       | Obrigatório | Descrição                                                     | Validações                                      | Exemplo                                   |
+|---------------|------------|-------------|---------------------------------------------------------------|-------------------------------------------------|-------------------------------------------|
+| `amount`      | BigDecimal | Sim         | Valor da renda extra.                                         | Positivo (`@Positive`).                         | `350.00`                                  |
+| `categoryId`  | UUID       | Sim         | UUID da categoria associada à renda extra.                    | Obrigatório (`@NotNull`).                       | `e7a1c3b2-4f9d-4a3d-8c9e-1b2d3f4a5e6f`    |
+| `description` | String     | Não         | Descrição opcional da renda extra.                            | Máximo de 255 caracteres (`@Size(max = 255)`).  | "Freelance de design"                     |
+| `date`        | LocalDate  | Sim         | Data da entrada no formato `YYYY-MM-DD`.                      | Obrigatório (`@NotNull`).                       | "2025-05-18"                              |
+
+*(Nota: A associação com um `Bank` não é feita através deste DTO de criação. A renda extra será criada sem um banco vinculado por este endpoint específico).*
+
+##### Respostas Esperadas
+
+-   **`201 Created`**: Renda extra criada com sucesso.
+    -   **Corpo da Resposta (`ExtraIncome` - Entidade):**
+        ```json
+        {
+            "id": 101,
+            "user": {
+                "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241",
+                // ... outros campos do usuário conforme serialização
+            },
+            "category": {
+                "id": "e7a1c3b2-4f9d-4a3d-8c9e-1b2d3f4a5e6f",
+                // ... outros campos da categoria conforme serialização
+            },
+            "amount": 350.00,
+            "bank": null, // Não vinculado a um banco por este endpoint
+            "description": "Freelance de design",
+            "date": "2025-05-18"
+        }
+        ```
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados de criação inválidos (ex: `amount` não positivo, `categoryId` ou `date` ausentes).
+    -   **Exemplo de Corpo da Resposta:**
+        ```json
+        {
+            "timestamp": "2025-05-31T12:00:00Z",
+            "status": 400,
+            "error": "Erro de Validação de Campo",
+            "message": "Um ou mais campos falharam na validação. Veja os detalhes.",
+            "path": "/api/extra-income",
+            "details": [
+                "amount: must be greater than 0" // Exemplo
+            ]
+        }
+        ```
+-   **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+-   **`404 Not Found`**:
+    -   Usuário autenticado não encontrado.
+        -   Mensagem: `User not found with email {userEmail}`
+    -   Categoria com o `categoryId` fornecido não encontrada.
+        -   Mensagem: `Category not found with ID {categoryId}`
+
+#### 5.2.2. Listar Todas as Rendas Extras do Usuário
+
+-   **Endpoint:** `GET /api/extra-income`
+-   **Funcionalidade:** Retorna uma lista de todas as rendas extras pertencentes ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Lista de rendas extras retornada com sucesso.
+    -   **Corpo da Resposta (Array de `ExtraIncome` - Entidade):**
+        ```json
+        [
+            {
+                "id": 101,
+                "user": { "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241", ... },
+                "category": { "id": "e7a1c3b2-4f9d-4a3d-8c9e-1b2d3f4a5e6f", ... },
+                "amount": 350.00,
+                "bank": null,
+                "description": "Freelance de design",
+                "date": "2025-05-18"
+            },
+            {
+                "id": 102,
+                "user": { "id": "2ec7d1c2-a306-4ffe-9603-dc39408d5241", ... },
+                "category": { "id": "f8b2d4c3-5e0e-5b4e-9d0f-2c3e4g5b6f7h", ... },
+                "amount": 500.00,
+                "bank": { "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef", "name": "Banco Principal", ... }, // Exemplo com banco
+                "description": "Venda de item usado",
+                "date": "2025-05-20"
+            }
+        ]
+        ```
+        Se o usuário não possuir rendas extras, retorna uma lista vazia `[]`.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+-   **`404 Not Found`**: Usuário autenticado não encontrado.
+    -   Mensagem: `User not found with email {userEmail}`
+
+### 5.3. Modelos de Dados (DTOs) para Renda Extra
+
+#### 5.3.1. `ExtraIncomeDto` (Criação)
+Dados para registrar uma nova renda extra.
+
+| Campo         | Tipo       | Obrigatório | Descrição                                                     |
+|---------------|------------|-------------|---------------------------------------------------------------|
+| `amount`      | BigDecimal | Sim         | Valor da renda extra (deve ser positivo).                     |
+| `categoryId`  | UUID       | Sim         | UUID da categoria associada.                                  |
+| `description` | String     | Não         | Descrição opcional (máx 255 caracteres).                      |
+| `date`        | LocalDate  | Sim         | Data da entrada no formato `YYYY-MM-DD`.                      |
+
+#### 5.3.2. `ExtraIncome` (Entidade Principal - Resposta)
+Representa a estrutura completa de uma renda extra como retornada pela API (detalhada em [5.1](#51-objeto-renda-extra-extraincome---entidade-principal)).
+
+#### 5.3.3. `ExtraIncomeSimpleDto` (Referência)
+DTO simplificado para contextos específicos (ex: visualização em listas de contas a receber). Não é diretamente retornado pelos endpoints atuais de `/api/extra-income`.
+
+| Campo         | Tipo       | Descrição                                                       |
+|---------------|------------|-----------------------------------------------------------------|
+| `id`          | Long       | ID da renda extra.                                              |
+| `description` | String     | Descrição da renda extra.                                       |
+| `value`       | BigDecimal | Valor da renda extra (corresponde ao `amount` da entidade).     |
+| `bankId`      | UUID       | ID do banco associado (opcional).                               |
+| `bankName`    | String     | Nome do banco associado (opcional).                             |
+
+### 5.4. Considerações Importantes para Renda Extra
+
+-   **Propriedade de Dados**: Todas as rendas extras são vinculadas ao usuário autenticado.
+-   **Associação com Categoria**: Toda renda extra deve ser associada a uma categoria existente.
+-   **Associação com Banco**:
+    -   A entidade `ExtraIncome` permite uma associação opcional com um `Bank`.
+    -   O endpoint de criação `POST /api/extra-income` **não** define uma associação com banco. Rendas extras criadas por este endpoint inicialmente não terão um `bankId`.
+    -   Mecanismos para associar/desassociar uma renda extra a um banco ou registrar uma renda extra diretamente em um banco precisariam de endpoints adicionais ou modificações nos DTOs existentes.
+-   **ID da Renda Extra**: Utiliza `Long` como tipo de identificador, diferentemente de outras entidades que usam `UUID`.
+-   **Operações CRUD**: Atualmente, a API expõe apenas a criação (`POST`) e listagem (`GET`) de rendas extras. Funcionalidades de atualização e exclusão para rendas extras individuais não estão presentes nos endpoints de `ExtraIncomeController`.
+
