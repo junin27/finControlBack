@@ -1,4 +1,4 @@
-package fincontrol.com.fincontrol.config; // Ou seu pacote de exceções/config
+package fincontrol.com.fincontrol.config; // Ou o pacote correto
 
 import fincontrol.com.fincontrol.dto.error.ErrorResponseDto;
 import fincontrol.com.fincontrol.exception.InsufficientBalanceException;
@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -30,7 +29,7 @@ public class RestExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.NOT_FOUND.value(),
                 HttpStatus.NOT_FOUND.getReasonPhrase(),
-                ex.getMessage(), // Mensagem específica da exceção
+                ex.getMessage(),
                 request.getRequestURI()
         );
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
@@ -58,7 +57,7 @@ public class RestExceptionHandler {
                 LocalDateTime.now(),
                 status.value(),
                 status.getReasonPhrase(),
-                ex.getMessage(), // Mensagem específica, ex: "As duas senhas não conferem..."
+                ex.getMessage(),
                 request.getRequestURI()
         );
         return new ResponseEntity<>(errorResponse, status);
@@ -66,7 +65,7 @@ public class RestExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponseDto> handleValidationExceptions(MethodArgumentNotValidException ex, HttpServletRequest request) {
-        List<String> errorDetails = ex.getBindingResult()
+        List<String> details = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
@@ -75,10 +74,10 @@ public class RestExceptionHandler {
         ErrorResponseDto errorResponse = new ErrorResponseDto(
                 LocalDateTime.now(),
                 HttpStatus.BAD_REQUEST.value(),
-                "Erro de Validação de Campo", // Um 'error' mais específico
-                "Um ou mais campos falharam na validação. Veja os detalhes.", // Mensagem principal
+                "Erro de Validação de Campo",
+                "Um ou mais campos falharam na validação. Veja os detalhes.",
                 request.getRequestURI(),
-                errorDetails // Lista com cada erro de campo
+                details
         );
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
@@ -89,7 +88,7 @@ public class RestExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.UNAUTHORIZED.value(),
                 HttpStatus.UNAUTHORIZED.getReasonPhrase(),
-                ex.getMessage(), // Mensagem como "A sua senha está incorreta."
+                ex.getMessage(),
                 request.getRequestURI()
         );
         return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
@@ -102,7 +101,7 @@ public class RestExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
-                "Ocorreu um erro inesperado no servidor.",
+                "Ocorreu um erro inesperado no servidor. Por favor, tente novamente mais tarde ou contate o suporte.",
                 request.getRequestURI()
         );
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);

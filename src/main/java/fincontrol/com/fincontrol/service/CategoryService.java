@@ -1,80 +1,170 @@
 package fincontrol.com.fincontrol.service;
 
-import fincontrol.com.fincontrol.dto.CategoryDto;
+import fincontrol.com.fincontrol.dto.CategoryCreateDto;
+// O CategoryUpdateDto individual pode ainda ser útil para o endpoint de update individual
+import fincontrol.com.fincontrol.dto.CategoryUpdateDto;
+import fincontrol.com.fincontrol.dto.CategoryMassUpdateDto; // Novo DTO para atualização em massa
+import fincontrol.com.fincontrol.exception.InvalidOperationException;
 import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.Category;
+import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.repository.CategoryRepository;
+import fincontrol.com.fincontrol.repository.ExpenseRepository;
+import fincontrol.com.fincontrol.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils; // Para StringUtils.hasText
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class CategoryService {
 
-    private final CategoryRepository repo;
+    private final CategoryRepository categoryRepository;
+    private final UserRepository userRepository;
+    private final ExpenseRepository expenseRepository;
 
-    public CategoryService(CategoryRepository repo) {
-        this.repo = repo;
+    public CategoryService(CategoryRepository categoryRepository,
+                           UserRepository userRepository,
+                           ExpenseRepository expenseRepository) {
+        this.categoryRepository = categoryRepository;
+        this.userRepository = userRepository;
+        this.expenseRepository = expenseRepository;
+    }
+
+    private User findUserById(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado com ID: " + userId));
     }
 
     public List<Category> findByUserId(UUID userId) {
-        return repo.findAllByUserId(userId);
+        findUserById(userId);
+        return categoryRepository.findAllByUserId(userId);
     }
 
     public Category getByIdAndUserId(UUID id, UUID userId) {
-        return repo.findByIdAndUserId(id, userId)
+        findUserById(userId);
+        return categoryRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Categoria não encontrada com ID " + id + " para o usuário especificado."));
+                        "Categoria com ID " + id + " não encontrada ou não pertence ao usuário especificado."));
     }
 
     @Transactional
-    public Category save(Category category) {
-        // A lógica de @PrePersist na entidade Category cuidará dos timestamps e do description padrão.
-        return repo.save(category);
+    public Category createCategory(CategoryCreateDto dto, UUID userId) {
+        User user = findUserById(userId);
+
+        Category category = new Category();
+        category.setUserId(user.getId());
+        category.setName(dto.getName());
+        category.setDescription(dto.getDescription());
+
+        return categoryRepository.save(category);
     }
 
     @Transactional
-    public Category updateCategory(UUID id, UUID userId, CategoryDto categoryDto) {
-        Category categoryToUpdate = getByIdAndUserId(id, userId);
+    public Category updateCategory(UUID categoryId, UUID userId, CategoryUpdateDto dto) {
+        Category categoryToUpdate = getByIdAndUserId(categoryId, userId);
         boolean needsUpdate = false;
 
-        // Atualiza o nome se fornecido no DTO e diferente do existente (e não apenas espaços em branco)
-        if (categoryDto.getName() != null && StringUtils.hasText(categoryDto.getName())) {
-            if (!categoryDto.getName().equals(categoryToUpdate.getName())) {
-                categoryToUpdate.setName(categoryDto.getName());
+        if (dto.getName() != null) {
+            if (!StringUtils.hasText(dto.getName())) {
+                throw new InvalidOperationException("O nome da categoria, se fornecido para atualização, não pode ser vazio ou apenas espaços.");
+            }
+            if (!dto.getName().equals(categoryToUpdate.getName())) {
+                categoryToUpdate.setName(dto.getName());
                 needsUpdate = true;
             }
         }
 
-        // Atualiza a descrição se o campo 'description' estiver presente no DTO (mesmo que seja string vazia)
-        // Se o campo não estiver no JSON (resultando em DTO.description == null), não atualiza.
-        // Para permitir limpar a descrição, o cliente envia {"description": ""}
-        // Para não alterar a descrição, o cliente omite o campo "description" do JSON.
-        if (categoryDto.getDescription() != null) { // Checa se a propriedade foi enviada
-            if (!categoryDto.getDescription().equals(categoryToUpdate.getDescription())) {
-                categoryToUpdate.setDescription(categoryDto.getDescription());
+        if (dto.getDescription() != null) {
+            if (!dto.getDescription().equals(categoryToUpdate.getDescription())) {
+                categoryToUpdate.setDescription(dto.getDescription());
                 needsUpdate = true;
             }
         }
 
         if (needsUpdate) {
-            // O @PreUpdate na entidade Category cuidará do updatedAt
-            return repo.save(categoryToUpdate);
+            return categoryRepository.save(categoryToUpdate);
         }
         return categoryToUpdate;
     }
 
+    // MÉTODO PARA ATUALIZAR TODAS AS CATEGORIAS DO USUÁRIO
+    @Transactional
+    public List<Category> massUpdateCategoriesByUser(CategoryMassUpdateDto dto, UUID userId) {
+        findUserById(userId); // Valida o usuário
+        List<Category> userCategories = categoryRepository.findAllByUserId(userId);
+
+        if (userCategories.isEmpty()) {
+            return userCategories; // Nenhuma categoria para atualizar
+        }
+
+        boolean nameProvidedToUpdate = dto.getName() != null;
+        String newName = nameProvidedToUpdate ? dto.getName() : null;
+        if (nameProvidedToUpdate && !StringUtils.hasText(newName)) {
+            throw new InvalidOperationException("O nome, se fornecido para atualização em massa, não pode ser vazio ou apenas espaços.");
+        }
+
+        boolean descriptionProvidedToUpdate = dto.getDescription() != null;
+        String newDescription = descriptionProvidedToUpdate ? dto.getDescription() : null;
+
+        // Se nenhum campo foi fornecido para atualização no DTO, não faz nada.
+        if (!nameProvidedToUpdate && !descriptionProvidedToUpdate) {
+            return userCategories; // Retorna a lista original sem modificações
+        }
+
+        for (Category category : userCategories) {
+            boolean categorySpecificUpdate = false;
+            if (nameProvidedToUpdate && (newName != null && !newName.equals(category.getName()))) {
+                category.setName(newName);
+                categorySpecificUpdate = true;
+            }
+            if (descriptionProvidedToUpdate && (newDescription != null && !newDescription.equals(category.getDescription()))) {
+                category.setDescription(newDescription); // Permite limpar se "" for enviado
+                categorySpecificUpdate = true;
+            }
+            // A entidade @PreUpdate cuidará do updatedAt se houver mudança.
+        }
+
+        // Salva todas as categorias modificadas (ou todas, se preferir, para atualizar o timestamp)
+        // Se só salvar as modificadas, o timestamp só atualiza nas modificadas.
+        // O saveAll pode ser mais eficiente se muitas categorias forem atualizadas.
+        return categoryRepository.saveAll(userCategories);
+    }
+
+
     @Transactional
     public void deleteByIdAndUserId(UUID id, UUID userId) {
-        long removedCount = repo.deleteByIdAndUserId(id, userId);
-        if (removedCount == 0) {
-            // Isso significa que ou a categoria não existe ou não pertence ao usuário,
-            // ou já foi deletada.
-            throw new ResourceNotFoundException(
-                    "Categoria com ID " + id + " não encontrada para o usuário especificado ou já removida.");
+        Category categoryToDelete = getByIdAndUserId(id, userId);
+        try {
+            categoryRepository.delete(categoryToDelete);
+        } catch (DataIntegrityViolationException e) {
+            throw new InvalidOperationException("Não é possível deletar a categoria '" + categoryToDelete.getName() + "' (ID: " + id + ") pois ela está sendo utilizada em outras partes do sistema (ex: despesas).");
         }
+    }
+
+    @Transactional
+    public int deleteAllCategoriesByUser(UUID userId) {
+        findUserById(userId);
+        List<Category> categoriesToDelete = categoryRepository.findAllByUserId(userId);
+        if (categoriesToDelete.isEmpty()) {
+            return 0;
+        }
+
+        // Verificação se alguma categoria está em uso antes de deletar em lote.
+        // Esta é uma verificação importante para evitar DataIntegrityViolationException não tratada.
+        for (Category category : categoriesToDelete) {
+            // Você precisará de um método no ExpenseRepository como: boolean existsByCategoryIdAndUserId(UUID categoryId, UUID userId);
+            // Ou boolean existsByCategoryId(UUID categoryId); se as despesas não forem filtradas por usuário aqui.
+            if (expenseRepository.existsByCategoryId(category.getId())) { // MÉTODO HIPOTÉTICO
+                throw new InvalidOperationException("Não é possível deletar todas as categorias. A categoria '" + category.getName() + "' (ID: " + category.getId() + ") está em uso por despesas.");
+            }
+            // Adicionar verificações para outras entidades que usam Category (ex: Bill, ExtraIncome)
+        }
+        // Se chegou aqui, nenhuma categoria está em uso (de acordo com as verificações)
+        return categoryRepository.deleteAllByUserId(userId);
     }
 }

@@ -7,14 +7,14 @@ import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
-// --- UserSimpleDto.java ---
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(name = "UserSimpleDto", description = "Simplified user data")
+@Schema(name = "UserSimpleDto", description = "Dados simplificados do usuário")
 public class UserSimpleDto {
-    @Schema(description = "User ID")
+    @Schema(description = "ID do usuário")
     private UUID id;
-    @Schema(description = "User name")
-    private String name; // Assuming your User entity has a 'name' field
+    @Schema(description = "Nome do usuário")
+    private String name; // Certifique-se que sua entidade User tem um getter para 'name'
 }
+    

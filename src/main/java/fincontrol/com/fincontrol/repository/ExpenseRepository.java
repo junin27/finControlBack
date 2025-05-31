@@ -25,4 +25,6 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> { // Gar
     List<Expense> findAllByUserId(UUID userId); // Método que adicionamos
 
     Optional<Expense> findByIdAndUserId(UUID id, UUID userId);
+
+    boolean existsByCategoryId(UUID categoryId); // NOVO MÉTODO
 }
