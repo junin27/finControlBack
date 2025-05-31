@@ -1594,4 +1594,290 @@ DTO mais simples que pode ser usado internamente ou para outros cenários. Cont�
 -   **Validação de Valores**: O valor da despesa (`value`) deve ser sempre positivo.
 -   **Operações em Lote**: A API permite atualizar campos específicos ou deletar todas as despesas de um usuário de uma vez.
 
+---
+
+## 8. Gerenciamento de Contas a Pagar (Bills)
+
+Esta seção detalha os endpoints para o gerenciamento das contas a pagar do usuário. As contas a pagar estão vinculadas a despesas (`Expense`) previamente registradas.
+
+Controlador responsável: `BillController`
+Rota base: `/api/bills`
+**Autenticação:** Requerida para todos os endpoints nesta seção.
+
+### 8.1. Objeto Conta a Pagar (`BillResponseDto`)
+
+Representa os dados detalhados de uma conta a pagar, como retornado pela API.
+
+| Campo         | Tipo                  | Descrição                                                                 | Exemplo                                   |
+|---------------|-----------------------|---------------------------------------------------------------------------|-------------------------------------------|
+| `id`          | UUID                  | ID único da conta a pagar.                                                | `f47ac10b-58cc-4372-a567-0e02b2c3d479`    |
+| `user`        | `UserSimpleDto`       | Dados simplificados do usuário proprietário (ver [1.3.1](#131-userdto) ou [2.2.5](#225-usersimpledto)). | `{ "id": "uuid-user", "name": "Usuário Exemplo" }` |
+| `expense`     | `ExpenseSimpleDto`    | Detalhes simplificados da Despesa associada (ver [8.3.3](#833-expensesimpledto)). | `{ "id": "uuid-expense", "name": "Aluguel", "category": { "id": "uuid-cat", "name": "Moradia" } }` |
+| `bank`        | `BankSimpleDto`       | Banco associado ao pagamento (opcional, ver [8.3.4](#834-banksimpledto)). | `{ "id": "uuid-bank", "name": "Banco X" }` ou `null` |
+| `paymentMethod`| `PaymentMethod` (Enum)| Meio de pagamento.                                                        | `BANK_SLIP`                               |
+| `dueDate`     | LocalDate             | Data de vencimento da conta.                                              | `"2025-12-15"`                            |
+| `autoPay`     | boolean               | Indica se o pagamento é automático na data de vencimento.                 | `false`                                   |
+| `status`      | `BillStatus` (Enum)   | Status atual da conta a pagar.                                            | `PENDING`                                 |
+| `paymentDate` | LocalDate             | Data em que o pagamento foi efetuado (nulo se pendente/vencida).          | `"2025-12-14"` ou `null`                  |
+| `createdAt`   | LocalDateTime         | Timestamp de criação do registro da conta.                                | `"2025-11-01T14:30:00Z"`                  |
+| `updatedAt`   | LocalDateTime         | Timestamp da última atualização do registro.                              | `"2025-11-01T14:35:00Z"`                  |
+
+### 8.2. Endpoints de Contas a Pagar
+
+#### 8.2.1. Criar Nova Conta a Pagar
+
+-   **Endpoint:** `POST /api/bills`
+-   **Funcionalidade:** Cria uma nova conta a pagar para o usuário autenticado, vinculada a uma `Expense` existente.
+-   **Autenticação:** Requerida.
+
+##### Corpo da Requisição (`BillCreateDto`)
+
+| Campo         | Tipo                | Obrigatório | Descrição                                                                 | Validações                                      | Exemplo        |
+|---------------|---------------------|-------------|---------------------------------------------------------------------------|-------------------------------------------------|----------------|
+| `expenseId`   | UUID                | Sim         | ID da `Expense` (Despesa) associada.                                      | Obrigatório.                                    | `a1b2c3d4-e5f6-7890-1234-567890abcdef`    |
+| `bankId`      | UUID                | Não         | ID do `Bank` (Banco) de onde o pagamento será efetuado (opcional).        | -                                               | `c5d6e7f8-1234-5678-90ab-cdef12345678`    |
+| `paymentMethod`| `PaymentMethod` (Enum)| Sim         | Meio de pagamento.                                                        | Obrigatório. Valores permitidos: ver [8.3.5](#835-enums). | `BANK_SLIP`    |
+| `dueDate`     | LocalDate           | Sim         | Data de vencimento da conta (formato `YYYY-MM-DD`).                       | Obrigatório. `@FutureOrPresent` (não pode ser no passado). | `"2025-12-31"` |
+| `autoPay`     | Boolean             | Sim         | Indica se o pagamento deve ser tentado automaticamente na data de vencimento. Padrão `false`. | Obrigatório.                                    | `false`        |
+
+##### Respostas Esperadas
+
+-   **`201 Created`**: Conta a pagar criada com sucesso.
+    -   **Corpo da Resposta (`BillResponseDto`):** Detalhes da conta a pagar criada (conforme estrutura em [8.1](#81-objeto-conta-a-pagar-billresponsedto)).
+    -   **Headers:** `Location` contendo a URI do novo recurso.
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados inválidos fornecidos.
+    -   **Motivos:** Campos obrigatórios faltando, `dueDate` no passado, `expenseId` inválido.
+    -   Mensagem: `Due date cannot be in the past.`
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**:
+    -   Usuário autenticado não encontrado.
+    -   `Expense` com o `expenseId` fornecido não encontrada ou não pertence ao usuário.
+        -   Mensagem: `Expense with ID {expenseId} not found or does not belong to the user.`
+    -   `Bank` com o `bankId` (se fornecido) não encontrado ou não pertence ao usuário.
+        -   Mensagem: `Bank with ID {bankId} not found or does not belong to the user.`
+-   **`500 Internal Server Error`**.
+
+#### 8.2.2. Listar Contas a Pagar com Filtros Opcionais
+
+-   **Endpoint:** `GET /api/bills`
+-   **Funcionalidade:** Lista todas as contas a pagar do usuário autenticado, com suporte a filtros opcionais por status, categoria da despesa e banco associado.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Query (Opcionais)
+
+| Parâmetro           | Tipo                | Descrição                                         | Exemplo                                   |
+|---------------------|---------------------|---------------------------------------------------|-------------------------------------------|
+| `status`            | `BillStatus` (Enum) | Filtra pelo status da conta a pagar.              | `PENDING`                                 |
+| `expenseCategoryId` | UUID                | Filtra pelo ID da categoria da despesa associada. | `b9244a85-9d51-46e7-b626-259259862ad1`    |
+| `bankId`            | UUID                | Filtra pelo ID do banco associado ao pagamento.   | `c5d6e7f8-1234-5678-90ab-cdef12345678`    |
+
+*(Nota: Este endpoint pode suportar paginação dependendo da implementação do serviço, mas o controller atual retorna `List<BillResponseDto>` e não `Page<BillResponseDto>`).*
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Lista de contas a pagar retornada com sucesso.
+    -   **Corpo da Resposta (Array de `BillResponseDto`):**
+        ```json
+        [
+            // Array de BillResponseDto (estrutura em 8.1)
+        ]
+        ```
+        Se o usuário não possuir contas a pagar (ou nenhuma corresponder aos filtros), retorna uma lista vazia `[]`.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Se `expenseCategoryId` ou `bankId` forem fornecidos e não encontrados/pertencerem ao usuário.
+-   **`500 Internal Server Error`**.
+
+#### 8.2.3. Buscar Conta a Pagar Específica por ID
+
+-   **Endpoint:** `GET /api/bills/{id}`
+-   **Funcionalidade:** Recupera os detalhes de uma conta a pagar específica pelo seu ID, se pertencer ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                           |
+|-----------|--------|-------------|-------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a pagar a ser buscada.  |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Conta a pagar encontrada.
+    -   **Corpo da Resposta (`BillResponseDto`):** Detalhes da conta a pagar.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Conta a pagar não encontrada ou não pertence ao usuário.
+    -   Mensagem: `Bill with ID {id} not found or does not belong to the user.`
+-   **`500 Internal Server Error`**.
+
+#### 8.2.4. Atualizar Conta a Pagar Existente
+
+-   **Endpoint:** `PATCH /api/bills/{id}`
+-   **Funcionalidade:** Atualiza uma conta a pagar existente. Somente campos não nulos no corpo da requisição serão atualizados. Não é possível atualizar se já foi paga.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                              |
+|-----------|--------|-------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a pagar a ser atualizada.  |
+
+##### Corpo da Requisição (`BillUpdateDto`)
+
+*Apenas os campos a serem alterados precisam ser fornecidos.*
+
+| Campo         | Tipo                | Obrigatório | Descrição                                                                 | Validações                                      |
+|---------------|---------------------|-------------|---------------------------------------------------------------------------|-------------------------------------------------|
+| `expenseId`   | UUID                | Não         | Novo ID da `Expense` associada.                                           | -                                               |
+| `bankId`      | UUID                | Não         | Novo ID do `Bank` para pagamento (enviar `null` para desassociar).        | -                                               |
+| `paymentMethod`| `PaymentMethod` (Enum)| Não         | Novo meio de pagamento.                                                   | Valores permitidos: ver [8.3.5](#835-enums).      |
+| `dueDate`     | LocalDate           | Não         | Nova data de vencimento (formato `YYYY-MM-DD`).                           | `@FutureOrPresent`.                             |
+| `autoPay`     | Boolean             | Não         | Alterar a flag de pagamento automático.                                   | -                                               |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Conta a pagar atualizada com sucesso.
+    -   **Corpo da Resposta (`BillResponseDto`):** Detalhes atualizados da conta a pagar.
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados inválidos ou operação não permitida.
+    -   **Motivos:** Tentativa de atualizar uma conta já paga (`status` `PAID` ou `PAID_LATE`), nova `dueDate` no passado.
+    -   Mensagem: `Cannot update a bill that has already been paid.`
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Conta a pagar, `Expense` ou `Bank` (se IDs fornecidos) não encontrado ou não pertence ao usuário.
+-   **`500 Internal Server Error`**.
+
+#### 8.2.5. Marcar Conta a Pagar como Paga Manualmente
+
+-   **Endpoint:** `PATCH /api/bills/{id}/pay`
+-   **Funcionalidade:** Marca uma conta a pagar com status `PENDING` ou `OVERDUE` como `PAID` ou `PAID_LATE`, respectivamente. Define a `paymentDate` para a data atual.
+    *(Nota: Esta ação manual não debita automaticamente o valor do banco, mesmo que um `bankId` esteja associado e `autoPay` seja true. O débito automático é responsabilidade do job agendado).*
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                                           |
+|-----------|--------|-------------|-----------------------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a pagar a ser marcada como paga.        |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Conta a pagar marcada como paga/paga com atraso com sucesso.
+    -   **Corpo da Resposta (`BillResponseDto`):** Detalhes atualizados da conta a pagar.
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Operação inválida.
+    -   **Motivos:** Conta já marcada como paga.
+    -   Mensagem: `This bill has already been marked as paid.`
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Conta a pagar não encontrada ou não pertence ao usuário.
+-   **`500 Internal Server Error`**.
+
+#### 8.2.6. Deletar Conta a Pagar
+
+-   **Endpoint:** `DELETE /api/bills/{id}`
+-   **Funcionalidade:** Deleta uma conta a pagar específica pelo seu ID, se pertencer ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                           |
+|-----------|--------|-------------|-------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a pagar a ser deletada. |
+
+##### Respostas Esperadas
+
+-   **`204 No Content`**: Conta a pagar deletada com sucesso.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`404 Not Found`**: Conta a pagar não encontrada ou não pertence ao usuário.
+-   **`500 Internal Server Error`**.
+
+### 8.3. Modelos de Dados (DTOs) e Enums para Contas a Pagar
+
+#### 8.3.1. `BillCreateDto`
+Dados para criar uma nova conta a pagar.
+
+| Campo         | Tipo                | Descrição                                                                 |
+|---------------|---------------------|---------------------------------------------------------------------------|
+| `expenseId`   | UUID                | ID da `Expense` associada (obrigatório).                                  |
+| `bankId`      | UUID                | ID do `Bank` para pagamento (opcional).                                   |
+| `paymentMethod`| `PaymentMethod` (Enum)| Meio de pagamento (obrigatório).                                          |
+| `dueDate`     | LocalDate           | Data de vencimento (obrigatório, não pode ser no passado).                |
+| `autoPay`     | Boolean             | Indica pagamento automático (obrigatório, padrão `false`).                  |
+
+#### 8.3.2. `BillUpdateDto`
+Dados para atualizar uma conta a pagar existente. Apenas campos fornecidos são atualizados.
+
+| Campo         | Tipo                | Descrição                                                                 |
+|---------------|---------------------|---------------------------------------------------------------------------|
+| `expenseId`   | UUID                | Novo ID da `Expense` associada (opcional).                                |
+| `bankId`      | UUID                | Novo ID do `Bank` para pagamento (opcional, `null` para desassociar).     |
+| `paymentMethod`| `PaymentMethod` (Enum)| Novo meio de pagamento (opcional).                                        |
+| `dueDate`     | LocalDate           | Nova data de vencimento (opcional, não pode ser no passado).              |
+| `autoPay`     | Boolean             | Alterar flag de pagamento automático (opcional).                          |
+
+#### 8.3.3. `ExpenseSimpleDto` (Contexto de Contas a Pagar)
+Representa dados simplificados da Despesa associada a uma conta a pagar.
+
+| Campo      | Tipo                | Descrição                                                     |
+|------------|---------------------|---------------------------------------------------------------|
+| `id`       | UUID                | ID da Despesa.                                                |
+| `name`     | String              | Nome da Despesa.                                              |
+| `category` | `CategorySimpleDto` | Categoria da Despesa (contém `id` e `name` da categoria, ver [2.2.4](#224-categorydatadto) ou similar). |
+
+#### 8.3.4. `BankSimpleDto` (Contexto de Contas a Pagar)
+Representa dados simplificados do Banco associado a uma conta a pagar.
+
+| Campo | Tipo   | Descrição                 |
+|-------|--------|---------------------------|
+| `id`  | UUID   | ID do Banco.              |
+| `name`| String | Nome do Banco.            |
+
+#### 8.3.5. Enums
+
+##### `BillStatus`
+Status possíveis para uma conta a pagar:
+-   `PENDING`: Pendente de pagamento.
+-   `PAID`: Paga no prazo.
+-   `OVERDUE`: Vencida e não paga.
+-   `PAID_LATE`: Paga com atraso.
+
+##### `PaymentMethod`
+Meios de pagamento possíveis (idêntico a `ReceiptMethodEnum`):
+-   `CASH`: Dinheiro
+-   `CREDIT_CARD`: Cartão de Crédito
+-   `DEBIT_CARD`: Cartão de Débito
+-   `PIX`: PIX
+-   `BANK_SLIP`: Boleto Bancário
+-   `CHECK`: Cheque
+-   `LOAN`: Empréstimo (se aplicável como forma de pagamento)
+-   `TRANSFER`: Transferência Bancária
+-   `CRYPTOCURRENCY`: Criptomoeda
+-   `OTHER`: Outro
+
+### 8.4. Considerações Importantes para Contas a Pagar
+
+-   **Vínculo com Despesa**: Toda conta a pagar deve estar vinculada a um registro de `Expense` (Despesa) existente.
+-   **Status da Conta**: O status é gerenciado pelo sistema, podendo ser alterado por ações do usuário (marcar como paga) ou por processos automáticos (marcar como vencida, processar pagamento automático).
+-   **Pagamento Automático (`autoPay`)**:
+    -   Se `autoPay` for `true` e um `bankId` estiver associado, um job agendado (`processAutomaticPaymentsJob`) tentará pagar a conta na data de vencimento, debitando o valor do banco associado.
+    -   O pagamento automático só ocorre se o status for `PENDING` e o banco tiver saldo suficiente.
+-   **Jobs Agendados (`BillScheduledTasks.java`)**:
+    -   `checkAndMarkOverdueBills`: Verifica diariamente contas `PENDING` cuja `dueDate` passou e as marca como `OVERDUE`.
+    -   `processAutomaticPayments`: Verifica diariamente contas `PENDING` com `autoPay = true` e `dueDate` igual ao dia atual, tentando efetuar o pagamento a partir do banco vinculado.
+-   **Atualização de Contas Pagas**: Não é permitido atualizar contas que já foram marcadas como `PAID` ou `PAID_LATE`.
+-   **Paginação na Listagem**: O endpoint `GET /api/bills` atualmente retorna uma `List` e não uma `Page`. Para grandes volumes de dados, a paginação seria recomendada (como implementado em `ReceivableController`).
+
 
