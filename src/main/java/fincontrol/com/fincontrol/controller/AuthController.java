@@ -1,9 +1,9 @@
 package fincontrol.com.fincontrol.controller;
 
+import fincontrol.com.fincontrol.dto.ErrorResponseDto;
 import fincontrol.com.fincontrol.dto.LoginDto;
 import fincontrol.com.fincontrol.dto.UserDto;
 import fincontrol.com.fincontrol.dto.UserRegisterDto;
-import fincontrol.com.fincontrol.dto.error.ErrorResponseDto; // Importar ErrorResponseDto
 import fincontrol.com.fincontrol.exception.InvalidOperationException;
 import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.security.JwtTokenProvider;

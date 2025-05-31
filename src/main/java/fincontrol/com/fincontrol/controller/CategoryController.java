@@ -2,7 +2,6 @@ package fincontrol.com.fincontrol.controller;
 
 import fincontrol.com.fincontrol.dto.*;
 
-import fincontrol.com.fincontrol.dto.error.ErrorResponseDto;
 import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.Category;
 import fincontrol.com.fincontrol.model.User;

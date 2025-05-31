@@ -1,4 +1,4 @@
-package fincontrol.com.fincontrol.dto.error;
+package fincontrol.com.fincontrol.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
