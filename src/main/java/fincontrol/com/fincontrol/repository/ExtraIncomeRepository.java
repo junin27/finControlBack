@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface ExtraIncomeRepository extends JpaRepository<ExtraIncome, Long> {
@@ -22,5 +23,7 @@ public interface ExtraIncomeRepository extends JpaRepository<ExtraIncome, Long> 
     @Transactional
     @Query("DELETE FROM ExtraIncome e WHERE e.bank.id = :bankId")
     void deleteByBankId(@Param("bankId") UUID bankId);
+
+    Optional<ExtraIncome> findByIdAndUserId(Long id, UUID userId);
 
 }

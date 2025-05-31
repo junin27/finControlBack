@@ -1,8 +1,11 @@
 package fincontrol.com.fincontrol.service;
 
 import fincontrol.com.fincontrol.dto.ExpenseCreateDto;
-import fincontrol.com.fincontrol.dto.ExpenseDto;
+import fincontrol.com.fincontrol.dto.ExpenseMassUpdateDto;
 import fincontrol.com.fincontrol.dto.ExpenseUpdateDto;
+// Não precisa mais retornar ExpenseDto daqui, o controller vai montar o ExpenseDetailResponseDto
+import fincontrol.com.fincontrol.exception.InvalidOperationException;
+import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.Bank;
 import fincontrol.com.fincontrol.model.Category;
 import fincontrol.com.fincontrol.model.Expense;
@@ -11,186 +14,194 @@ import fincontrol.com.fincontrol.repository.BankRepository;
 import fincontrol.com.fincontrol.repository.CategoryRepository;
 import fincontrol.com.fincontrol.repository.ExpenseRepository;
 import fincontrol.com.fincontrol.repository.UserRepository;
-import org.springframework.security.core.context.SecurityContextHolder; // Import mantido
+// import org.springframework.security.core.context.SecurityContextHolder; // Controller vai pegar o User
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils; // Import para StringUtils
+import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+// import java.time.LocalDate; // Não é mais necessário importar se não usado diretamente nos parâmetros aqui
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
+// import java.util.stream.Collectors; // Não é mais necessário aqui
 
 @Service
 public class ExpenseService {
 
-    private final ExpenseRepository expenseRepo;
-    private final CategoryRepository categoryRepo;
-    private final BankRepository bankRepo;
-    private final UserRepository userRepo;
+    private final ExpenseRepository expenseRepository;
+    private final CategoryRepository categoryRepository;
+    private final BankRepository bankRepository;
+    private final UserRepository userRepository;
 
-    public ExpenseService(ExpenseRepository e,
-                          CategoryRepository c,
-                          BankRepository b,
-                          UserRepository u) {
-        this.expenseRepo  = e;
-        this.categoryRepo = c;
-        this.bankRepo     = b;
-        this.userRepo     = u;
+    public ExpenseService(ExpenseRepository expenseRepository,
+                          CategoryRepository categoryRepository,
+                          BankRepository bankRepository,
+                          UserRepository userRepository) {
+        this.expenseRepository  = expenseRepository;
+        this.categoryRepository = categoryRepository;
+        this.bankRepository     = bankRepository;
+        this.userRepository     = userRepository;
+    }
+
+    private User findUserById(UUID userId) { // Mantido para validação interna
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado com ID: " + userId));
+    }
+
+    private Category findCategoryByIdAndUser(UUID categoryId, UUID userId) {
+        return categoryRepository.findByIdAndUserId(categoryId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Categoria com ID " + categoryId + " não encontrada ou não pertence ao usuário."));
+    }
+
+    private Bank findBankByIdAndUser(UUID bankId, UUID userId) {
+        return bankRepository.findByIdAndUserId(bankId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Banco com ID " + bankId + " não encontrado ou não pertence ao usuário."));
     }
 
     @Transactional
-    public ExpenseDto create(ExpenseCreateDto dto, UUID userId) {
-        Category cat = categoryRepo.findById(dto.getCategoryId())
-                .orElseThrow(() -> new RuntimeException("Categoria não encontrada para o ID: " + dto.getCategoryId()));
+    public Expense create(ExpenseCreateDto dto, UUID userId) { // Retorna a Entidade
+        User user = findUserById(userId);
+        Category category = findCategoryByIdAndUser(dto.getCategoryId(), userId);
 
-        Expense ex = new Expense();
-        ex.setName(dto.getName());
-        ex.setDescription(dto.getDescription()); // Será tratado pelo @PrePersist se for null/vazio
-        ex.setValue(dto.getValue());
-        ex.setCategory(cat);
-        ex.setExpenseDate(dto.getExpenseDate()); // Define a data da despesa
+        Expense expense = new Expense();
+        expense.setName(dto.getName());
+        expense.setDescription(dto.getDescription());
+        expense.setValue(dto.getValue());
+        expense.setExpenseDate(dto.getExpenseDate());
+        expense.setCategory(category);
+        expense.setUser(user);
 
         if (dto.getBankId() != null) {
-            Bank bank = bankRepo.findById(dto.getBankId())
-                    .orElseThrow(() -> new RuntimeException("Banco não encontrado para o ID: " + dto.getBankId()));
-            ex.setBank(bank);
+            Bank bank = findBankByIdAndUser(dto.getBankId(), userId);
+            expense.setBank(bank);
         }
-
-        User user = userRepo.findById(userId)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado para o ID: " + userId));
-        ex.setUser(user);
-
-        Expense salvo = expenseRepo.save(ex);
-        return toDto(salvo);
+        return expenseRepository.save(expense); // Retorna a entidade salva
     }
 
-    public List<ExpenseDto> listAll() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User currentUser = userRepo.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+    public List<Expense> listAllByAuthenticatedUser(UUID userId) { // Recebe userId, retorna Lista de Entidades
+        findUserById(userId); // Valida usuário
+        return expenseRepository.findAllByUserId(userId);
+    }
 
-        return expenseRepo.findAllByUserId(currentUser.getId()).stream()
-                .map(this::toDto)
-                .collect(Collectors.toList());
+    public Expense findByIdAndUserIdEnsureOwnership(UUID expenseId, UUID userId) { // Retorna a Entidade
+        findUserById(userId); // Valida usuário
+        return expenseRepository.findByIdAndUserId(expenseId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Despesa com ID " + expenseId + " não encontrada ou não pertence ao usuário."));
     }
 
     @Transactional
-    public ExpenseDto update(UUID id, ExpenseUpdateDto dto) {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User currentUser = userRepo.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
-
-        Expense e = expenseRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Despesa não encontrada para o ID: " + id));
-
-        if (!e.getUser().getId().equals(currentUser.getId())) {
-            throw new RuntimeException("Acesso negado: Esta despesa não pertence ao usuário autenticado.");
-        }
+    public Expense update(UUID expenseId, ExpenseUpdateDto dto, UUID userId) { // Retorna a Entidade
+        findUserById(userId);
+        Expense expense = expenseRepository.findByIdAndUserId(expenseId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Não é possível editar a despesa (ID: " + expenseId + "), porque você não possui ela cadastrada."));
 
         boolean needsUpdate = false;
-
-        if (dto.getName() != null && StringUtils.hasText(dto.getName())) {
-            if(!dto.getName().equals(e.getName())){
-                e.setName(dto.getName());
+        // ... (lógica de atualização idêntica à anterior, modificando a entidade 'expense') ...
+        if (dto.getName() != null) {
+            if (!StringUtils.hasText(dto.getName())) {
+                throw new InvalidOperationException("O nome da despesa, se fornecido para atualização, não pode ser vazio.");
+            }
+            if(!dto.getName().equals(expense.getName())){
+                expense.setName(dto.getName());
                 needsUpdate = true;
             }
         }
-        if (dto.getDescription() != null) { // Permite limpar description se "" for enviado
-            if(!dto.getDescription().equals(e.getDescription())) {
-                e.setDescription(dto.getDescription());
+        if (dto.getDescription() != null) {
+            if(!dto.getDescription().equals(expense.getDescription())) {
+                expense.setDescription(dto.getDescription());
                 needsUpdate = true;
             }
         }
         if (dto.getValue() != null) {
-            if(e.getValue().compareTo(dto.getValue()) != 0) {
-                e.setValue(dto.getValue());
+            if (dto.getValue().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new InvalidOperationException("O campo value necessita ser maior que 0.");
+            }
+            if(expense.getValue().compareTo(dto.getValue()) != 0) {
+                expense.setValue(dto.getValue());
                 needsUpdate = true;
             }
         }
-        if (dto.getExpenseDate() != e.getExpenseDate() &&
-           (dto.getExpenseDate() != null || e.getExpenseDate() != null)) {
-            e.setExpenseDate(dto.getExpenseDate()); // Permite setar para null para limpar a data
-            needsUpdate = true;
+        if (dto.getExpenseDate() != null || expense.getExpenseDate() != null) { // Permite setar para null para limpar
+            if (expense.getExpenseDate() == null || dto.getExpenseDate() == null || !dto.getExpenseDate().equals(expense.getExpenseDate())) {
+                expense.setExpenseDate(dto.getExpenseDate());
+                needsUpdate = true;
+            }
         }
-
         if (dto.getCategoryId()  != null) {
-            if (e.getCategory() == null || !dto.getCategoryId().equals(e.getCategory().getId())) {
-                Category cat = categoryRepo.findById(dto.getCategoryId())
-                        .orElseThrow(() -> new RuntimeException("Categoria não encontrada para o ID: " + dto.getCategoryId()));
-                e.setCategory(cat);
+            if (expense.getCategory() == null || !dto.getCategoryId().equals(expense.getCategory().getId())) {
+                Category category = findCategoryByIdAndUser(dto.getCategoryId(), userId);
+                expense.setCategory(category);
                 needsUpdate = true;
             }
         }
-
-        // Lógica para atualizar ou desassociar o banco
-        if (dto.getBankId() != null) { // Se um bankId foi fornecido no DTO para associar/mudar
-            if (e.getBank() == null || !dto.getBankId().equals(e.getBank().getId())) {
-                Bank b = bankRepo.findById(dto.getBankId())
-                        .orElseThrow(() -> new RuntimeException("Banco não encontrado para o ID: " + dto.getBankId()));
-                e.setBank(b);
+        if (dto.getBankId() != null) {
+            if (expense.getBank() == null || !dto.getBankId().equals(expense.getBank().getId())) {
+                Bank bank = findBankByIdAndUser(dto.getBankId(), userId);
+                expense.setBank(bank);
                 needsUpdate = true;
             }
         } else {
-            // Se o bankId NÃO está no DTO (ou seja, dto.getBankId() é null),
-            // mas a despesa *estava* associada a um banco, isso significa que queremos desassociar.
-            if (e.getBank() != null) { // Apenas desassocie se havia um banco antes
-                e.setBank(null);
+            if (expense.getBank() != null) {
+                expense.setBank(null);
                 needsUpdate = true;
             }
         }
 
         if(needsUpdate) {
-            return toDto(expenseRepo.save(e));
+            return expenseRepository.save(expense);
         }
-        return toDto(e);
+        return expense;
     }
 
     @Transactional
-    public void delete(UUID id) {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User currentUser = userRepo.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+    public void delete(UUID expenseId, UUID userId) {
+        findUserById(userId);
+        Expense expenseToDelete = expenseRepository.findByIdAndUserId(expenseId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Não é possível deletar a despesa (ID: " + expenseId + "), porque você não possui ela cadastrada."));
 
-        Expense expenseToDelete = expenseRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Despesa não encontrada para o ID: " + id));
-
-        if (!expenseToDelete.getUser().getId().equals(currentUser.getId())) {
-            throw new RuntimeException("Acesso negado: Esta despesa não pertence ao usuário autenticado.");
-        }
-        expenseRepo.deleteById(id);
+        expenseRepository.delete(expenseToDelete);
     }
 
-    private ExpenseDto toDto(Expense e) {
-        UUID bankId = null;
-        String bankDisplayName;
+    @Transactional
+    public List<Expense> massUpdateUserExpenses(ExpenseMassUpdateDto dto, UUID userId) { // Retorna Lista de Entidades
+        findUserById(userId);
+        List<Expense> userExpenses = expenseRepository.findAllByUserId(userId);
 
-        if (e.getBank() != null) {
-            bankId = e.getBank().getId();
-            if (StringUtils.hasText(e.getBank().getName())) {
-                bankDisplayName = e.getBank().getName();
-            } else {
-                bankDisplayName = "Banco sem Nome Definido";
+        if (userExpenses.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        boolean descriptionProvided = dto.getDescription() != null;
+        boolean expenseDateProvided = dto.getExpenseDate() != null;
+
+        if (!descriptionProvided && !expenseDateProvided) {
+            return userExpenses;
+        }
+
+        for (Expense expense : userExpenses) {
+            boolean modified = false;
+            if (descriptionProvided && (expense.getDescription() == null || !dto.getDescription().equals(expense.getDescription()))) {
+                expense.setDescription(dto.getDescription());
+                modified = true;
             }
-        } else {
-            bankDisplayName = "Banco não Informado pelo Usuário";
+            if (expenseDateProvided && (expense.getExpenseDate() == null || !dto.getExpenseDate().equals(expense.getExpenseDate()))) {
+                expense.setExpenseDate(dto.getExpenseDate());
+                modified = true;
+            }
+            // A entidade @PreUpdate cuidará de updatedAt se modified for true e save for chamado.
+            // Mas saveAll fará isso de qualquer forma se a entidade for considerada suja pelo Hibernate.
         }
 
-        UUID categoryId = e.getCategory() != null ? e.getCategory().getId() : null;
-        String categoryName = e.getCategory() != null ? e.getCategory().getName() : "Categoria não Informada";
-
-
-        return new ExpenseDto(
-                e.getId(),
-                e.getName(),
-                e.getDescription(),
-                e.getValue(),
-                e.getExpenseDate(), // Adicionado expenseDate
-                categoryId,
-                categoryName,
-                bankId,
-                bankDisplayName,
-                e.getCreatedAt(),
-                e.getUpdatedAt()
-        );
+        return expenseRepository.saveAll(userExpenses); // Salva todas, mesmo que algumas não tenham mudado, para simplicidade.
+        // O Hibernate otimiza se não houver mudanças reais.
     }
+
+    @Transactional
+    public int deleteAllUserExpenses(UUID userId) {
+        findUserById(userId);
+        return expenseRepository.deleteAllByUserId(userId);
+    }
+
+
 }

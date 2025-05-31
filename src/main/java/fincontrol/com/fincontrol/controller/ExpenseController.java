@@ -1,13 +1,16 @@
 package fincontrol.com.fincontrol.controller;
 
-import fincontrol.com.fincontrol.dto.ExpenseCreateDto;
-import fincontrol.com.fincontrol.dto.ExpenseDto;
-import fincontrol.com.fincontrol.dto.ExpenseUpdateDto;
+import fincontrol.com.fincontrol.dto.*;
+
+import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
+import fincontrol.com.fincontrol.model.Expense;
+import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.repository.UserRepository;
 import fincontrol.com.fincontrol.service.ExpenseService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -18,107 +21,189 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder; // For URI creation
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import jakarta.validation.Valid; // For @Valid
-import java.net.URI; // For URI creation
+import jakarta.validation.Valid;
+import java.net.URI;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/expenses")
 @Tag(name = "Despesas", description = "CRUD de despesas do usuário")
 public class ExpenseController {
 
-    private final ExpenseService service;
-    private final UserRepository userRepo;
+    private final ExpenseService expenseService;
+    private final UserRepository userRepository;
 
-    public ExpenseController(ExpenseService service, UserRepository userRepo) {
-        this.service  = service;
-        this.userRepo = userRepo;
+    public ExpenseController(ExpenseService expenseService, UserRepository userRepository) {
+        this.expenseService = expenseService;
+        this.userRepository = userRepository;
+    }
+
+    private User getAuthenticatedUserEntity() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null) {
+            throw new ResourceNotFoundException("Usuário não autenticado.");
+        }
+        String userEmail = authentication.getName();
+        return userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário autenticado não encontrado com email: " + userEmail));
     }
 
     @Operation(summary = "Cria uma nova despesa para o usuário autenticado")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Despesa criada com sucesso",
-                    content = @Content(schema = @Schema(implementation = ExpenseDto.class))),
-            @ApiResponse(responseCode = "400", description = "Dados inválidos fornecidos"),
-            @ApiResponse(responseCode = "404", description = "Usuário, Categoria ou Banco não encontrado")
+                    content = @Content(schema = @Schema(implementation = ExpenseDetailResponseDto.class))),
+            @ApiResponse(responseCode = "400", description = "Dados inválidos fornecidos",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Usuário, Categoria ou Banco não encontrado",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @PostMapping
-    public ResponseEntity<ExpenseDto> create(
+    public ResponseEntity<ExpenseDetailResponseDto> create(
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "Dados para criar uma nova despesa",
                     required = true,
                     content = @Content(schema = @Schema(implementation = ExpenseCreateDto.class))
             )
             @Valid @RequestBody ExpenseCreateDto dto) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String email = auth.getName();
-
-        UUID userId = userRepo.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Usuário com email " + email + " não encontrado")) // Consider a specific exception like ResourceNotFoundException
-                .getId();
-
-        ExpenseDto createdExpense = service.create(dto, userId);
+        User authenticatedUser = getAuthenticatedUserEntity();
+        Expense createdExpenseEntity = expenseService.create(dto, authenticatedUser.getId());
+        ExpenseDetailResponseDto responseDto = toExpenseDetailResponseDto(createdExpenseEntity, authenticatedUser);
 
         URI location = ServletUriComponentsBuilder.fromCurrentRequest()
                 .path("/{id}")
-                .buildAndExpand(createdExpense.getId())
+                .buildAndExpand(createdExpenseEntity.getId())
                 .toUri();
 
-        return ResponseEntity.created(location).body(createdExpense);
+        return ResponseEntity.created(location).body(responseDto);
     }
 
     @Operation(summary = "Lista todas as despesas do usuário autenticado")
     @ApiResponse(responseCode = "200", description = "Lista de despesas retornada com sucesso",
-            content = @Content(mediaType = "application/json", schema = @Schema(implementation = ExpenseDto.class)))
-    // Se este método for para listar despesas APENAS do usuário logado,
-    // você precisará adicionar a lógica para filtrar por usuário, similar ao create.
-    // Atualmente, service.listAll() parece listar todas as despesas do sistema.
-    // Se for para listar todas, o summary deveria ser "Lista todas as despesas do sistema".
-    // Assumindo que seja para o usuário, a lógica de filtragem deve estar no service.listAll()
-    // ou este método precisa do userId. Para o exemplo, manterei como está no código original.
+            content = @Content(mediaType = "application/json",
+                    array = @ArraySchema(schema = @Schema(implementation = ExpenseDetailResponseDto.class))))
     @GetMapping
-    public List<ExpenseDto> listAll() {
-        // Se for para listar despesas do usuário autenticado, precisaria do userId aqui.
-        // Ex: service.listAllByUserId(userId);
-        return service.listAll();
+    public List<ExpenseDetailResponseDto> listAll() {
+        User authenticatedUser = getAuthenticatedUserEntity();
+        return expenseService.listAllByAuthenticatedUser(authenticatedUser.getId())
+                .stream()
+                .map(expenseEntity -> toExpenseDetailResponseDto(expenseEntity, authenticatedUser))
+                .collect(Collectors.toList());
     }
 
-    @Operation(summary = "Atualiza uma despesa existente")
+    @Operation(summary = "Busca uma despesa específica por ID para o usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Despesa encontrada",
+                    content = @Content(schema = @Schema(implementation = ExpenseDetailResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Despesa não encontrada ou não pertence ao usuário",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @GetMapping("/{id}")
+    public ResponseEntity<ExpenseDetailResponseDto> getById(@Parameter(description = "ID da despesa") @PathVariable UUID id) {
+        User authenticatedUser = getAuthenticatedUserEntity();
+        Expense expenseEntity = expenseService.findByIdAndUserIdEnsureOwnership(id, authenticatedUser.getId());
+        return ResponseEntity.ok(toExpenseDetailResponseDto(expenseEntity, authenticatedUser));
+    }
+
+    @Operation(summary = "Atualiza uma despesa existente do usuário autenticado")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Despesa atualizada com sucesso",
-                    content = @Content(schema = @Schema(implementation = ExpenseDto.class))),
-            @ApiResponse(responseCode = "400", description = "Dados inválidos fornecidos"),
-            @ApiResponse(responseCode = "404", description = "Despesa, Categoria ou Banco não encontrado")
+                    content = @Content(schema = @Schema(implementation = ExpenseDetailResponseDto.class))),
+            @ApiResponse(responseCode = "400", description = "Dados inválidos fornecidos",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Despesa não encontrada ou não pertence ao usuário",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @PutMapping("/{id}")
-    public ResponseEntity<ExpenseDto> update(
-            @Parameter(description = "ID da despesa a ser atualizada", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID id,
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Dados para atualizar a despesa",
-                    required = true,
-                    content = @Content(schema = @Schema(implementation = ExpenseUpdateDto.class))
-            )
-            @Valid @RequestBody ExpenseUpdateDto dto
-    ) {
-        // Adicionar lógica de permissão: verificar se a despesa pertence ao usuário autenticado antes de atualizar
-        return ResponseEntity.ok(service.update(id, dto));
+    public ResponseEntity<ExpenseDetailResponseDto> update(
+            @Parameter(description = "ID da despesa a ser atualizada") @PathVariable UUID id,
+            @Valid @RequestBody ExpenseUpdateDto dto) {
+        User authenticatedUser = getAuthenticatedUserEntity();
+        Expense updatedExpenseEntity = expenseService.update(id, dto, authenticatedUser.getId());
+        return ResponseEntity.ok(toExpenseDetailResponseDto(updatedExpenseEntity, authenticatedUser));
     }
 
-    @Operation(summary = "Deleta uma despesa existente")
+    @Operation(summary = "Deleta uma despesa existente do usuário autenticado")
     @ApiResponses({
             @ApiResponse(responseCode = "204", description = "Despesa deletada com sucesso"),
-            @ApiResponse(responseCode = "404", description = "Despesa não encontrada")
+            @ApiResponse(responseCode = "404", description = "Despesa não encontrada ou não pertence ao usuário",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(
-            @Parameter(description = "ID da despesa a ser deletada", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID id) {
-        // Adicionar lógica de permissão: verificar se a despesa pertence ao usuário autenticado antes de deletar
-        service.delete(id);
+            @Parameter(description = "ID da despesa a ser deletada") @PathVariable UUID id) {
+        User authenticatedUser = getAuthenticatedUserEntity();
+        expenseService.delete(id, authenticatedUser.getId());
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Atualiza campos específicos em TODAS as despesas do usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Despesas atualizadas com sucesso",
+                    content = @Content(mediaType = "application/json",
+                            array = @ArraySchema(schema = @Schema(implementation = ExpenseDetailResponseDto.class)))),
+            @ApiResponse(responseCode = "400", description = "Dados inválidos fornecidos",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PutMapping("/user-all")
+    public ResponseEntity<List<ExpenseDetailResponseDto>> massUpdateUserExpenses(
+            @Valid @RequestBody ExpenseMassUpdateDto dto) {
+        User authenticatedUser = getAuthenticatedUserEntity();
+        List<Expense> updatedExpenses = expenseService.massUpdateUserExpenses(dto, authenticatedUser.getId());
+        List<ExpenseDetailResponseDto> responseDtos = updatedExpenses.stream()
+                .map(expenseEntity -> toExpenseDetailResponseDto(expenseEntity, authenticatedUser))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(responseDtos);
+    }
+
+    @Operation(summary = "Deleta TODAS as despesas do usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Todas as despesas foram deletadas com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @DeleteMapping("/user-all")
+    public ResponseEntity<Void> deleteAllUserExpenses() {
+        User authenticatedUser = getAuthenticatedUserEntity();
+        expenseService.deleteAllUserExpenses(authenticatedUser.getId());
+        return ResponseEntity.noContent().build();
+    }
+
+    private ExpenseDetailResponseDto toExpenseDetailResponseDto(Expense expense, User user) {
+        UserSimpleDto userSimpleDto = new UserSimpleDto(user.getId(), user.getName());
+
+        CategorySimpleDto categorySimpleDto = null;
+        if (expense.getCategory() != null) {
+            categorySimpleDto = new CategorySimpleDto(
+                    expense.getCategory().getId(),
+                    expense.getCategory().getName()
+            );
+        }
+
+        BankSimpleDto bankSimpleDto = null;
+        if (expense.getBank() != null) {
+            bankSimpleDto = new BankSimpleDto(
+                    expense.getBank().getId(),
+                    expense.getBank().getName()
+            );
+        }
+
+        ExpenseDataDto expenseDataDto = new ExpenseDataDto(
+                expense.getId(),
+                expense.getName(),
+                expense.getDescription(),
+                expense.getValue(),
+                expense.getExpenseDate(),
+                categorySimpleDto,
+                bankSimpleDto,
+                expense.getCreatedAt(),
+                expense.getUpdatedAt()
+        );
+        return new ExpenseDetailResponseDto(userSimpleDto, expenseDataDto);
     }
 }

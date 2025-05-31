@@ -1,9 +1,7 @@
-package fincontrol.com.fincontrol.config; // Ou o pacote correto
+package fincontrol.com.fincontrol.exception; // Ou o pacote correto
 
-import fincontrol.com.fincontrol.dto.error.ErrorResponseDto;
-import fincontrol.com.fincontrol.exception.InsufficientBalanceException;
-import fincontrol.com.fincontrol.exception.InvalidOperationException;
-import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
+
+import fincontrol.com.fincontrol.dto.ErrorResponseDto;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -8,17 +8,19 @@ import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.repository.UserRepository;
 import io.micrometer.core.annotation.Timed;
-import org.springframework.security.authentication.BadCredentialsException; // Usar para erros de autenticação
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication; // Adicionado
+import org.springframework.security.core.context.SecurityContextHolder; // Adicionado
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils; // Para StringUtils.hasText
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern; // Para validações de regex se necessário aqui
+import java.util.regex.Pattern;
 
 @Service
 public class UserService {
@@ -26,9 +28,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder encoder;
 
-    // Regex para validar nome completo (ao menos duas palavras, somente letras, espaços, apóstrofos)
     private static final Pattern NAME_PATTERN = Pattern.compile("^[a-zA-ZÀ-ú']+(\\s[a-zA-ZÀ-ú']+)+$");
-    // Regex para validar senha (mínimo 6 chars, 1 letra, 1 número)
     private static final Pattern PASSWORD_PATTERN = Pattern.compile("^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d@$!%*?&]{6,}$");
 
 
@@ -41,21 +41,12 @@ public class UserService {
     @Timed(value = "user.register.time", description = "Tempo para registrar um novo usuário")
     @Transactional
     public User register(UserRegisterDto dto) {
-        // Validações de DTO (NotBlank, Email, Size, PositiveOrZero, Pattern) são feitas pelo @Valid no Controller.
-        // Aqui focamos nas validações que cruzam campos ou regras de negócio mais complexas.
-
-        // 1. Verificar se as senhas coincidem
         if (!dto.getPassword().equals(dto.getConfirmPassword())) {
             throw new InvalidOperationException("As duas senhas não conferem, elas precisam ter os mesmos caracteres exatamente iguais.");
         }
-
-        // As validações de formato de nome, e-mail, força de senha e salário positivo
-        // já estão no DTO com anotações e serão verificadas pelo @Valid no AuthController.
-        // A validação de e-mail único também está no AuthController.
-
         User u = new User();
-        u.setName(dto.getName().trim()); // Remover espaços extras do nome
-        u.setEmail(dto.getEmail().toLowerCase().trim()); // Armazenar e-mail em minúsculas e sem espaços extras
+        u.setName(dto.getName().trim());
+        u.setEmail(dto.getEmail().toLowerCase().trim());
         u.setPasswordHash(encoder.encode(dto.getPassword()));
         u.setSalary(dto.getSalary());
         return userRepository.save(u);
@@ -63,7 +54,6 @@ public class UserService {
 
     @Timed(value = "user.authenticate.time", description = "Tempo para autenticar um usuário")
     public User authenticate(LoginDto dto) {
-        // Validações de DTO (NotBlank, Email) são feitas pelo @Valid no AuthController.
         User u = userRepository.findByEmail(dto.getEmail().toLowerCase().trim())
                 .orElseThrow(() -> new ResourceNotFoundException("O email '" + dto.getEmail() + "' não está cadastrado no sistema."));
 
@@ -112,10 +102,6 @@ public class UserService {
             if (!PASSWORD_PATTERN.matcher(dto.getPassword()).matches()) {
                 throw new InvalidOperationException("A nova senha está fraca, ela precisa possuir ao menos letras e números.");
             }
-            // Se houver um campo confirmPassword no UserUpdateDto, validar aqui também.
-            // if (dto.getConfirmPassword() == null || !dto.getPassword().equals(dto.getConfirmPassword())) {
-            //     throw new InvalidOperationException("As senhas para atualização não conferem.");
-            // }
             u.setPasswordHash(encoder.encode(dto.getPassword()));
         }
 
@@ -135,5 +121,43 @@ public class UserService {
             throw new ResourceNotFoundException("Usuário não encontrado com ID: " + id + " para exclusão.");
         }
         userRepository.deleteById(id);
+    }
+
+    // --- MÉTODO ADICIONADO ---
+    /**
+     * Retrieves the ID of the currently authenticated user.
+     *
+     * @return The UUID of the authenticated user.
+     * @throws ResourceNotFoundException if the user is not authenticated or not found in the database.
+     * @throws IllegalStateException if the authenticated principal is not of an expected type.
+     */
+    public UUID getAuthenticatedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+            // Em um cenário ideal, o Spring Security já bloquearia o acesso não autenticado aos endpoints protegidos.
+            // Esta exceção é uma salvaguarda adicional.
+            throw new ResourceNotFoundException("User not authenticated. Cannot retrieve authenticated user ID.");
+        }
+
+        String username; // Geralmente o e-mail, conforme sua configuração de segurança
+        Object principal = authentication.getPrincipal();
+
+        if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
+            username = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+        } else if (principal instanceof String) {
+            // Se o principal for diretamente uma String (pode acontecer em algumas configurações de teste ou customizadas)
+            username = (String) principal;
+        } else {
+            // Se o tipo do principal não for esperado
+            throw new IllegalStateException("Authenticated principal is not of an expected type: " + principal.getClass().getName() +
+                    ". Could not extract username for user lookup.");
+        }
+
+        // Utiliza o método findByEmail que já existe e normaliza o e-mail (toLowerCase, trim)
+        User user = this.findByEmail(username)
+                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found in database with email: " + username));
+
+        // Assumindo que sua entidade User tem um método getId() que retorna UUID
+        return user.getId();
     }
 }

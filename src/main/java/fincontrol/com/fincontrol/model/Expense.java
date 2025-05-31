@@ -9,7 +9,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.time.LocalDate; // Import para LocalDate
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -21,7 +21,7 @@ import java.util.UUID;
 public class Expense {
 
     @Id
-    @GeneratedValue
+    @GeneratedValue(strategy = GenerationType.UUID) // Usar strategy = GenerationType.UUID
     private UUID id;
 
     @Column(nullable = false, length = 100)
@@ -33,7 +33,7 @@ public class Expense {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal value;
 
-    @Column(name = "expense_date", nullable = true) // Novo campo para a data da despesa
+    @Column(name = "expense_date", nullable = false) // Tornando obrigatório
     private LocalDate expenseDate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -61,6 +61,6 @@ public class Expense {
         if (!StringUtils.hasText(this.description)) {
             this.description = "Campo não Informado pelo Usuário";
         }
-        // Se expenseDate não for informado, ele permanecerá null, o que é o comportamento desejado para um campo opcional.
+        // createdAt e updatedAt são gerenciados pelo AuditingEntityListener
     }
 }
