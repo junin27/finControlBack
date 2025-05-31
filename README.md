@@ -968,3 +968,322 @@ DTO simplificado para contextos específicos (ex: visualização em listas de co
 -   **ID da Renda Extra**: Utiliza `Long` como tipo de identificador, diferentemente de outras entidades que usam `UUID`.
 -   **Operações CRUD**: Atualmente, a API expõe apenas a criação (`POST`) e listagem (`GET`) de rendas extras. Funcionalidades de atualização e exclusão para rendas extras individuais não estão presentes nos endpoints de `ExtraIncomeController`.
 
+---
+
+## 6. Gerenciamento de Contas a Receber
+
+Esta seção detalha os endpoints para o gerenciamento das contas a receber do usuário, que estão vinculadas a registros de Renda Extra.
+
+Controlador responsável: `ReceivableController`
+Rota base: `/api/receivables`
+**Autenticação:** Requerida para todos os endpoints nesta seção.
+
+### 6.1. Objeto Conta a Receber (`ReceivableResponseDto`)
+
+Representa os dados detalhados de uma conta a receber, como retornado pela API.
+
+| Campo                  | Tipo                     | Descrição                                                                 | Exemplo                                   |
+|------------------------|--------------------------|---------------------------------------------------------------------------|-------------------------------------------|
+| `id`                   | UUID                     | ID único da conta a receber (somente leitura).                            | `02d1a2b3-c4d5-e6f7-a8b9-c0d1e2f3a4b5`    |
+| `extraIncome`          | `ExtraIncomeSimpleDto`   | Detalhes simplificados da Renda Extra associada.                          | (ver [6.3.3](#633-extraincomesimpledto))  |
+| `receiptMethod`        | `ReceiptMethodEnum`      | Meio de recebimento esperado.                                             | `PIX`                                     |
+| `dueDate`              | LocalDate                | Data de vencimento (prevista para recebimento).                           | `"2025-12-31"`                            |
+| `automaticBankReceipt` | Boolean                  | Indica se o recebimento deve ser processado automaticamente com o banco.  | `true`                                    |
+| `status`               | `ReceivableStatusEnum`   | Status atual da conta a receber.                                          | `PENDING`                                 |
+| `user`                 | `UserSimpleDto`          | Dados simplificados do usuário proprietário (somente leitura).            | (ver [2.2.5](#225-usersimpledto))         |
+| `createdAt`            | LocalDateTime            | Timestamp de criação do registro da conta a receber (somente leitura).    | `"2025-06-01T10:00:00"`                   |
+| `updatedAt`            | LocalDateTime            | Timestamp da última atualização do registro (somente leitura).            | `"2025-06-01T10:05:00"`                   |
+
+### 6.2. Endpoints de Contas a Receber
+
+#### 6.2.1. Criar Nova Conta a Receber
+
+-   **Endpoint:** `POST /api/receivables`
+-   **Funcionalidade:** Cria uma nova conta a receber para o usuário autenticado, vinculada a um registro de `ExtraIncome` existente.
+-   **Autenticação:** Requerida.
+
+##### Corpo da Requisição (`ReceivableCreateDto`)
+
+| Campo                  | Tipo                  | Obrigatório | Descrição                                                                 | Validações                                      | Exemplo        |
+|------------------------|-----------------------|-------------|---------------------------------------------------------------------------|-------------------------------------------------|----------------|
+| `extraIncomeId`        | Long                  | Sim         | ID do registro de `ExtraIncome` associado.                                | Obrigatório.                                    | `101`          |
+| `receiptMethod`        | `ReceiptMethodEnum`   | Sim         | Meio de recebimento.                                                      | Obrigatório.                                    | `PIX`          |
+| `dueDate`              | LocalDate             | Sim         | Data de vencimento para o recebimento (formato `YYYY-MM-DD`).             | Obrigatório. Não pode ser no passado.           | `"2025-12-31"` |
+| `automaticBankReceipt` | Boolean               | Sim         | Indica se o recebimento deve ser processado automaticamente com o banco.  | Obrigatório.                                    | `true`         |
+
+##### Respostas Esperadas
+
+-   **`201 Created`**: Conta a receber criada com sucesso.
+    -   **Corpo da Resposta (`ReceivableResponseDto`):** Detalhes da conta a receber criada (conforme estrutura em [6.1](#61-objeto-conta-a-receber-receivableresponsedto)).
+    -   **Headers:** `Location` contendo a URI do novo recurso criado (ex: `/api/receivables/02d1a2b3-c4d5-e6f7-a8b9-c0d1e2f3a4b5`).
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados inválidos fornecidos.
+    -   **Motivos:** Campos obrigatórios faltando, `extraIncomeId` inválido, `dueDate` no passado.
+    -   **Exemplo de Corpo da Resposta:**
+        ```json
+        {
+            "timestamp": "2025-06-01T11:00:00Z",
+            "status": 400,
+            "error": "Bad Request",
+            "message": "Due date cannot be in the past.", // Ou outra mensagem específica
+            "path": "/api/receivables"
+        }
+        ```
+-   **`401 Unauthorized`**: Token JWT ausente, inválido ou expirado.
+-   **`404 Not Found`**:
+    -   Usuário autenticado não encontrado.
+        -   Mensagem: `Authenticated user not found with email: {userEmail}`
+    -   `ExtraIncome` com o `extraIncomeId` fornecido não encontrado ou não pertence ao usuário.
+        -   Mensagem: `ExtraIncome with ID {extraIncomeId} not found or does not belong to the user.`
+-   **`500 Internal Server Error`**: Erro inesperado no servidor.
+
+#### 6.2.2. Listar Contas a Receber com Filtros Opcionais
+
+-   **Endpoint:** `GET /api/receivables`
+-   **Funcionalidade:** Lista todas as contas a receber do usuário autenticado, com suporte a paginação e filtros opcionais por status e intervalo de datas de vencimento.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Query (Opcionais)
+
+| Parâmetro   | Tipo                   | Descrição                                         | Exemplo        |
+|-------------|------------------------|---------------------------------------------------|----------------|
+| `status`    | `ReceivableStatusEnum` | Filtra pelo status da conta a receber.            | `PENDING`      |
+| `startDate` | LocalDate              | Filtra por data de vencimento a partir de (YYYY-MM-DD). | `"2025-01-01"` |
+| `endDate`   | LocalDate              | Filtra por data de vencimento até (YYYY-MM-DD).   | `"2025-12-31"` |
+| `page`      | Integer                | Número da página (começa em 0). Padrão: `0`.      | `0`            |
+| `size`      | Integer                | Tamanho da página. Padrão: `10`.                  | `20`           |
+| `sort`      | String                 | Campo para ordenação (ex: `dueDate,asc` ou `dueDate,desc`). Padrão: `dueDate,asc`. | `dueDate,desc` |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Lista paginada de contas a receber retornada com sucesso.
+    -   **Corpo da Resposta (`Page<ReceivableResponseDto>`):** Objeto de paginação contendo a lista de `ReceivableResponseDto` e informações de paginação.
+        ```json
+        {
+            "content": [
+                // Array de ReceivableResponseDto (estrutura em 6.1)
+            ],
+            "pageable": {
+                "sort": {
+                    "sorted": true,
+                    "unsorted": false,
+                    "empty": false
+                },
+                "offset": 0,
+                "pageNumber": 0,
+                "pageSize": 10,
+                "paged": true,
+                "unpaged": false
+            },
+            "totalPages": 1,
+            "totalElements": 2,
+            "last": true,
+            "size": 10,
+            "number": 0,
+            "sort": {
+                "sorted": true,
+                "unsorted": false,
+                "empty": false
+            },
+            "numberOfElements": 2,
+            "first": true,
+            "empty": false
+        }
+        ```
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`500 Internal Server Error`**.
+
+#### 6.2.3. Buscar Conta a Receber Específica por ID
+
+-   **Endpoint:** `GET /api/receivables/{id}`
+-   **Funcionalidade:** Recupera os detalhes de uma conta a receber específica pelo seu ID, se pertencer ao usuário autenticado.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                           | Exemplo                                   |
+|-----------|--------|-------------|-------------------------------------|-------------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a receber a ser buscada. | `02d1a2b3-c4d5-e6f7-a8b9-c0d1e2f3a4b5`    |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Conta a receber encontrada.
+    -   **Corpo da Resposta (`ReceivableResponseDto`):** Detalhes da conta a receber (conforme estrutura em [6.1](#61-objeto-conta-a-receber-receivableresponsedto)).
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`403 Forbidden`**: (Implícito se a lógica de serviço restringir acesso, embora o controller atual use `findByIdAndUserId`).
+-   **`404 Not Found`**: Conta a receber não encontrada ou não pertence ao usuário.
+    -   Mensagem: `Receivable with ID {id} not found or does not belong to the user.`
+-   **`500 Internal Server Error`**.
+
+#### 6.2.4. Atualizar Conta a Receber Existente
+
+-   **Endpoint:** `PATCH /api/receivables/{id}`
+-   **Funcionalidade:** Atualiza uma conta a receber existente (ex: data de vencimento, meio de recebimento). Somente campos não nulos no corpo da requisição serão atualizados. Não é possível atualizar se já foi marcada como recebida.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                              |
+|-----------|--------|-------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a receber a ser atualizada. |
+
+##### Corpo da Requisição (`ReceivableUpdateDto`)
+
+*Apenas os campos a serem alterados precisam ser fornecidos.*
+
+| Campo                  | Tipo                  | Obrigatório | Descrição                                                                 | Validações                                      | Exemplo        |
+|------------------------|-----------------------|-------------|---------------------------------------------------------------------------|-------------------------------------------------|----------------|
+| `receiptMethod`        | `ReceiptMethodEnum`   | Não         | Novo meio de recebimento.                                                 | -                                               | `BANK_SLIP`    |
+| `dueDate`              | LocalDate             | Não         | Nova data de vencimento (formato `YYYY-MM-DD`).                           | Não pode ser no passado.                        | `"2026-01-15"` |
+| `automaticBankReceipt` | Boolean               | Não         | Alterar a flag de recebimento automático no banco.                        | -                                               | `false`        |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Conta a receber atualizada com sucesso.
+    -   **Corpo da Resposta (`ReceivableResponseDto`):** Detalhes atualizados da conta a receber.
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Dados inválidos ou operação não permitida.
+    -   **Motivos:** Tentativa de atualizar uma conta já recebida (`status` `RECEIVED` ou `RECEIVED_LATE`), nova `dueDate` no passado.
+    -   **Exemplo de Corpo da Resposta:**
+        ```json
+        {
+            "timestamp": "2025-06-01T11:05:00Z",
+            "status": 400,
+            "error": "Bad Request",
+            "message": "Cannot update a receivable that has already been marked as received. Status: RECEIVED",
+            "path": "/api/receivables/02d1a2b3-c4d5-e6f7-a8b9-c0d1e2f3a4b5"
+        }
+        ```
+-   **`401 Unauthorized`**.
+-   **`403 Forbidden`**.
+-   **`404 Not Found`**: Conta a receber não encontrada ou não pertence ao usuário.
+-   **`500 Internal Server Error`**.
+
+#### 6.2.5. Marcar Conta a Receber como Recebida Manualmente
+
+-   **Endpoint:** `PUT /api/receivables/{id}/mark-as-received`
+-   **Funcionalidade:** Marca uma conta a receber com status `PENDING` ou `OVERDUE` como `RECEIVED` ou `RECEIVED_LATE`, respectivamente. Se `automaticBankReceipt` for `true` e a `ExtraIncome` associada tiver um banco vinculado, o saldo do banco é atualizado.
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                                              |
+|-----------|--------|-------------|--------------------------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a receber a ser marcada como recebida.     |
+
+##### Respostas Esperadas
+
+-   **`200 OK`**: Conta a receber marcada como recebida/recebida com atraso com sucesso.
+    -   **Corpo da Resposta (`ReceivableResponseDto`):** Detalhes atualizados da conta a receber.
+
+##### Possíveis Erros
+
+-   **`400 Bad Request`**: Operação inválida.
+    -   **Motivos:** Conta já marcada como recebida.
+    -   Mensagem: `Receivable with ID {id} has already been marked as received.`
+-   **`401 Unauthorized`**.
+-   **`403 Forbidden`**.
+-   **`404 Not Found`**: Conta a receber não encontrada, ou banco associado (para recebimento automático) não encontrado.
+-   **`500 Internal Server Error`**.
+
+#### 6.2.6. Deletar Conta a Receber
+
+-   **Endpoint:** `DELETE /api/receivables/{id}`
+-   **Funcionalidade:** Deleta uma conta a receber específica pelo seu ID, se pertencer ao usuário autenticado.
+    *Atenção: Se a conta a receber foi processada automaticamente e atualizou o saldo de um banco, esta exclusão não reverte automaticamente a transação bancária.*
+-   **Autenticação:** Requerida.
+
+##### Parâmetros de Caminho
+
+| Parâmetro | Tipo   | Obrigatório | Descrição                              |
+|-----------|--------|-------------|----------------------------------------|
+| `id`      | UUID   | Sim         | ID da conta a receber a ser deletada.  |
+
+##### Respostas Esperadas
+
+-   **`204 No Content`**: Conta a receber deletada com sucesso.
+
+##### Possíveis Erros
+
+-   **`401 Unauthorized`**.
+-   **`403 Forbidden`**.
+-   **`404 Not Found`**: Conta a receber não encontrada ou não pertence ao usuário.
+-   **`500 Internal Server Error`**.
+
+### 6.3. Modelos de Dados (DTOs) e Enums para Contas a Receber
+
+#### 6.3.1. `ReceivableCreateDto`
+Dados para criar uma nova conta a receber.
+
+| Campo                  | Tipo                  | Descrição                                                                 |
+|------------------------|-----------------------|---------------------------------------------------------------------------|
+| `extraIncomeId`        | Long                  | ID do registro de `ExtraIncome` associado (obrigatório).                  |
+| `receiptMethod`        | `ReceiptMethodEnum`   | Meio de recebimento (obrigatório).                                        |
+| `dueDate`              | LocalDate             | Data de vencimento (obrigatório, não pode ser no passado).                |
+| `automaticBankReceipt` | Boolean               | Indica recebimento automático no banco (obrigatório).                     |
+
+#### 6.3.2. `ReceivableUpdateDto`
+Dados para atualizar uma conta a receber existente. Apenas campos fornecidos são atualizados.
+
+| Campo                  | Tipo                  | Descrição                                                                 |
+|------------------------|-----------------------|---------------------------------------------------------------------------|
+| `receiptMethod`        | `ReceiptMethodEnum`   | Novo meio de recebimento (opcional).                                      |
+| `dueDate`              | LocalDate             | Nova data de vencimento (opcional, não pode ser no passado).              |
+| `automaticBankReceipt` | Boolean               | Alterar flag de recebimento automático no banco (opcional).               |
+
+#### 6.3.3. `ExtraIncomeSimpleDto` (Contexto de Contas a Receber)
+Representa dados simplificados da Renda Extra associada a uma conta a receber.
+
+| Campo         | Tipo       | Descrição                                                       |
+|---------------|------------|-----------------------------------------------------------------|
+| `id`          | Long       | ID da Renda Extra.                                              |
+| `description` | String     | Descrição da Renda Extra.                                       |
+| `value`       | BigDecimal | Valor da Renda Extra (corresponde ao `amount` da entidade `ExtraIncome`). |
+| `bankId`      | UUID       | ID do banco associado à Renda Extra (opcional).                 |
+| `bankName`    | String     | Nome do banco associado à Renda Extra (opcional).               |
+
+#### 6.3.4. `ReceivableResponseDto`
+Resposta detalhada para operações de contas a receber (estrutura detalhada em [6.1](#61-objeto-conta-a-receber-receivableresponsedto)).
+
+#### 6.3.5. Enums
+
+##### `ReceivableStatusEnum`
+Status possíveis para uma conta a receber:
+-   `PENDING`: Pendente de recebimento.
+-   `RECEIVED`: Recebido no prazo.
+-   `OVERDUE`: Vencido e não recebido.
+-   `RECEIVED_LATE`: Recebido com atraso.
+
+##### `ReceiptMethodEnum`
+Meios de recebimento possíveis:
+-   `CASH`: Dinheiro
+-   `CREDIT_CARD`: Cartão de Crédito
+-   `DEBIT_CARD`: Cartão de Débito
+-   `PIX`: PIX
+-   `BANK_SLIP`: Boleto Bancário
+-   `CHECK`: Cheque
+-   `LOAN`: Empréstimo (se aplicável como meio de receber de terceiros)
+-   `TRANSFER`: Transferência Bancária
+-   `CRYPTOCURRENCY`: Criptomoeda
+-   `OTHER`: Outro
+
+### 6.4. Considerações Importantes para Contas a Receber
+
+-   **Vínculo com Renda Extra**: Toda conta a receber deve estar vinculada a um registro de `ExtraIncome` existente.
+-   **Status da Conta**: O status é gerenciado pelo sistema, podendo ser alterado por ações do usuário (marcar como recebido) ou por processos automáticos (marcar como vencido).
+-   **Recebimento Automático no Banco**: Se `automaticBankReceipt` for `true` e a `ExtraIncome` vinculada tiver um banco associado, o saldo desse banco será creditado quando a conta for marcada como recebida (manual ou automaticamente).
+-   **Jobs Agendados (Implícito)**: A lógica de serviço (`ReceivableService`) inclui métodos para processar contas vencidas (`processOverdueReceivablesJob`) e para processar recebimentos automáticos no banco (`processAutomaticBankReceiptsJob`). Estes jobs não são expostos como endpoints da API, mas são parte crucial do funcionamento do sistema.
+-   **Paginação**: A listagem de contas a receber (`GET /api/receivables`) suporta paginação para lidar com grandes volumes de dados.
+-   **Atualização de Contas Recebidas**: Não é permitido atualizar contas que já foram marcadas como `RECEIVED` ou `RECEIVED_LATE`.
+
+
