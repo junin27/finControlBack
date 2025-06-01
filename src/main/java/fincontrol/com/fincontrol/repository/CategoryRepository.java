@@ -18,6 +18,8 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
 
     long deleteByIdAndUserId(UUID id, UUID userId);
 
+
+
     // Novo método para deletar todas as categorias de um usuário
     // Retorna o número de categorias deletadas
     @Modifying

@@ -1,9 +1,8 @@
 package fincontrol.com.fincontrol.service;
 
 import fincontrol.com.fincontrol.dto.CategoryCreateDto;
-// O CategoryUpdateDto individual pode ainda ser útil para o endpoint de update individual
+import fincontrol.com.fincontrol.dto.CategoryMassUpdateDto;
 import fincontrol.com.fincontrol.dto.CategoryUpdateDto;
-import fincontrol.com.fincontrol.dto.CategoryMassUpdateDto; // Novo DTO para atualização em massa
 import fincontrol.com.fincontrol.exception.InvalidOperationException;
 import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.Category;
@@ -12,6 +11,8 @@ import fincontrol.com.fincontrol.repository.CategoryRepository;
 import fincontrol.com.fincontrol.repository.ExpenseRepository;
 import fincontrol.com.fincontrol.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,26 +36,53 @@ public class CategoryService {
         this.expenseRepository = expenseRepository;
     }
 
-    private User findUserById(UUID userId) {
+    /**
+     * Lê o Authentication do SecurityContext, supõe que auth.getName() == UUID do usuário.
+     * Faz findById(...) no UserRepository. Se falhar, lança ResourceNotFoundException.
+     */
+    private User getAuthenticatedUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            throw new ResourceNotFoundException("Usuário não autenticado");
+        }
+
+        UUID userId;
+        try {
+            userId = UUID.fromString(auth.getName());
+        } catch (IllegalArgumentException ex) {
+            throw new ResourceNotFoundException("Formato de identificador de usuário inválido: " + auth.getName());
+        }
+
         return userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado com ID: " + userId));
-    }
-
-    public List<Category> findByUserId(UUID userId) {
-        findUserById(userId);
-        return categoryRepository.findAllByUserId(userId);
-    }
-
-    public Category getByIdAndUserId(UUID id, UUID userId) {
-        findUserById(userId);
-        return categoryRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Categoria com ID " + id + " não encontrada ou não pertence ao usuário especificado."));
+                        "Usuário autenticado não encontrado com ID: " + userId));
     }
 
+    /**
+     * Lista todas as categorias vinculadas ao usuário logado.
+     */
+    public List<Category> listAllCategories() {
+        User user = getAuthenticatedUser();
+        return categoryRepository.findAllByUserId(user.getId());
+    }
+
+    /**
+     * Busca uma categoria específica (por ID) do usuário logado.
+     */
+    public Category getCategoryById(UUID categoryId) {
+        User user = getAuthenticatedUser();
+        return categoryRepository.findByIdAndUserId(categoryId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Categoria com ID " + categoryId + " não encontrada ou não pertence ao usuário."
+                ));
+    }
+
+    /**
+     * Cria uma nova categoria para o usuário logado.
+     */
     @Transactional
-    public Category createCategory(CategoryCreateDto dto, UUID userId) {
-        User user = findUserById(userId);
+    public Category createCategory(CategoryCreateDto dto) {
+        User user = getAuthenticatedUser();
 
         Category category = new Category();
         category.setUserId(user.getId());
@@ -64,14 +92,24 @@ public class CategoryService {
         return categoryRepository.save(category);
     }
 
+    /**
+     * Atualiza uma categoria existente do usuário logado.
+     */
     @Transactional
-    public Category updateCategory(UUID categoryId, UUID userId, CategoryUpdateDto dto) {
-        Category categoryToUpdate = getByIdAndUserId(categoryId, userId);
+    public Category updateCategory(UUID categoryId, CategoryUpdateDto dto) {
+        User user = getAuthenticatedUser();
+        Category categoryToUpdate = categoryRepository.findByIdAndUserId(categoryId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Categoria com ID " + categoryId + " não encontrada ou não pertence ao usuário."
+                ));
+
         boolean needsUpdate = false;
 
         if (dto.getName() != null) {
             if (!StringUtils.hasText(dto.getName())) {
-                throw new InvalidOperationException("O nome da categoria, se fornecido para atualização, não pode ser vazio ou apenas espaços.");
+                throw new InvalidOperationException(
+                        "O nome da categoria, se fornecido para atualização, não pode ser vazio ou apenas espaços."
+                );
             }
             if (!dto.getName().equals(categoryToUpdate.getName())) {
                 categoryToUpdate.setName(dto.getName());
@@ -92,79 +130,98 @@ public class CategoryService {
         return categoryToUpdate;
     }
 
-    // MÉTODO PARA ATUALIZAR TODAS AS CATEGORIAS DO USUÁRIO
+    /**
+     * Atualiza em massa todas as categorias do usuário logado.
+     * Se nenhum campo for fornecido no DTO, retorna a lista sem alterações.
+     */
     @Transactional
-    public List<Category> massUpdateCategoriesByUser(CategoryMassUpdateDto dto, UUID userId) {
-        findUserById(userId); // Valida o usuário
-        List<Category> userCategories = categoryRepository.findAllByUserId(userId);
+    public List<Category> massUpdateCategories(CategoryMassUpdateDto dto) {
+        User user = getAuthenticatedUser();
+        List<Category> userCategories = categoryRepository.findAllByUserId(user.getId());
 
         if (userCategories.isEmpty()) {
-            return userCategories; // Nenhuma categoria para atualizar
+            return userCategories;
         }
 
-        boolean nameProvidedToUpdate = dto.getName() != null;
-        String newName = nameProvidedToUpdate ? dto.getName() : null;
-        if (nameProvidedToUpdate && !StringUtils.hasText(newName)) {
-            throw new InvalidOperationException("O nome, se fornecido para atualização em massa, não pode ser vazio ou apenas espaços.");
+        boolean nameProvided = dto.getName() != null;
+        String newName = dto.getName();
+        if (nameProvided && !StringUtils.hasText(newName)) {
+            throw new InvalidOperationException(
+                    "O nome, se fornecido para atualização em massa, não pode ser vazio ou apenas espaços."
+            );
         }
 
-        boolean descriptionProvidedToUpdate = dto.getDescription() != null;
-        String newDescription = descriptionProvidedToUpdate ? dto.getDescription() : null;
+        boolean descriptionProvided = dto.getDescription() != null;
+        String newDescription = dto.getDescription();
 
-        // Se nenhum campo foi fornecido para atualização no DTO, não faz nada.
-        if (!nameProvidedToUpdate && !descriptionProvidedToUpdate) {
-            return userCategories; // Retorna a lista original sem modificações
+        if (!nameProvided && !descriptionProvided) {
+            return userCategories;
         }
 
         for (Category category : userCategories) {
-            boolean categorySpecificUpdate = false;
-            if (nameProvidedToUpdate && (newName != null && !newName.equals(category.getName()))) {
+            boolean updated = false;
+            if (nameProvided && newName != null && !newName.equals(category.getName())) {
                 category.setName(newName);
-                categorySpecificUpdate = true;
+                updated = true;
             }
-            if (descriptionProvidedToUpdate && (newDescription != null && !newDescription.equals(category.getDescription()))) {
-                category.setDescription(newDescription); // Permite limpar se "" for enviado
-                categorySpecificUpdate = true;
+            if (descriptionProvided && newDescription != null && !newDescription.equals(category.getDescription())) {
+                category.setDescription(newDescription);
+                updated = true;
             }
-            // A entidade @PreUpdate cuidará do updatedAt se houver mudança.
+            // O @PreUpdate na entidade pode atualizar updatedAt, se configurado.
         }
 
-        // Salva todas as categorias modificadas (ou todas, se preferir, para atualizar o timestamp)
-        // Se só salvar as modificadas, o timestamp só atualiza nas modificadas.
-        // O saveAll pode ser mais eficiente se muitas categorias forem atualizadas.
         return categoryRepository.saveAll(userCategories);
     }
 
-
+    /**
+     * Deleta uma categoria específica do usuário logado.
+     * Se a categoria estiver em uso por despesas, lança InvalidOperationException.
+     */
     @Transactional
-    public void deleteByIdAndUserId(UUID id, UUID userId) {
-        Category categoryToDelete = getByIdAndUserId(id, userId);
+    public void deleteCategory(UUID categoryId) {
+        User user = getAuthenticatedUser();
+        Category categoryToDelete = categoryRepository.findByIdAndUserId(categoryId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Categoria com ID " + categoryId + " não encontrada ou não pertence ao usuário."
+                ));
+
         try {
             categoryRepository.delete(categoryToDelete);
         } catch (DataIntegrityViolationException e) {
-            throw new InvalidOperationException("Não é possível deletar a categoria '" + categoryToDelete.getName() + "' (ID: " + id + ") pois ela está sendo utilizada em outras partes do sistema (ex: despesas).");
+            throw new InvalidOperationException(
+                    "Não é possível deletar a categoria '" +
+                            categoryToDelete.getName() +
+                            "' (ID: " + categoryId +
+                            ") pois ela está sendo utilizada em outras partes do sistema (ex: despesas)."
+            );
         }
     }
 
+    /**
+     * Deleta todas as categorias do usuário logado.
+     * Retorna a quantidade de categorias efetivamente deletadas.
+     * Se alguma estiver em uso por despesas, lança InvalidOperationException.
+     */
     @Transactional
-    public int deleteAllCategoriesByUser(UUID userId) {
-        findUserById(userId);
-        List<Category> categoriesToDelete = categoryRepository.findAllByUserId(userId);
+    public int deleteAllCategories() {
+        User user = getAuthenticatedUser();
+        List<Category> categoriesToDelete = categoryRepository.findAllByUserId(user.getId());
+
         if (categoriesToDelete.isEmpty()) {
             return 0;
         }
 
-        // Verificação se alguma categoria está em uso antes de deletar em lote.
-        // Esta é uma verificação importante para evitar DataIntegrityViolationException não tratada.
         for (Category category : categoriesToDelete) {
-            // Você precisará de um método no ExpenseRepository como: boolean existsByCategoryIdAndUserId(UUID categoryId, UUID userId);
-            // Ou boolean existsByCategoryId(UUID categoryId); se as despesas não forem filtradas por usuário aqui.
-            if (expenseRepository.existsByCategoryId(category.getId())) { // MÉTODO HIPOTÉTICO
-                throw new InvalidOperationException("Não é possível deletar todas as categorias. A categoria '" + category.getName() + "' (ID: " + category.getId() + ") está em uso por despesas.");
+            if (expenseRepository.existsByCategoryIdAndUserId(category.getId(), user.getId())) {
+                throw new InvalidOperationException(
+                        "Não é possível deletar todas as categorias. " +
+                                "A categoria '" + category.getName() + "' (ID: " + category.getId() +
+                                ") está em uso por despesas."
+                );
             }
-            // Adicionar verificações para outras entidades que usam Category (ex: Bill, ExtraIncome)
         }
-        // Se chegou aqui, nenhuma categoria está em uso (de acordo com as verificações)
-        return categoryRepository.deleteAllByUserId(userId);
+
+        return categoryRepository.deleteAllByUserId(user.getId());
     }
 }

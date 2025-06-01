@@ -1,6 +1,7 @@
 package fincontrol.com.fincontrol.repository;
 
 import fincontrol.com.fincontrol.model.Expense;
+import fincontrol.com.fincontrol.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -31,6 +32,8 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> { // Ass
     @org.springframework.transaction.annotation.Transactional
     int deleteAllByUserId(UUID userId);
 
+    boolean existsByCategoryIdAndUserId(UUID categoryId, UUID userId);
+
     @Query("SELECT e FROM Expense e LEFT JOIN FETCH e.bank WHERE e.user.id = :userId")
     List<Expense> findAllByUserIdWithBankDetails(@Param("userId") UUID userId);
 
@@ -53,4 +56,17 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> { // Ass
     // o nome do método "existsByCategoryId" já funcionaria diretamente.
     // Assumindo que Expense tem: private Category category; e Category tem private UUID id;
     boolean existsByCategoryId(UUID categoryId);
+
+    /**
+     * Soma do campo `amount` para todas as Expense com este bankId e pertencentes a este usuário.
+     * Retorna 0 se não houver registros (COALESCE).
+     */
+    @Query("SELECT COALESCE(SUM(e.value), 0) " +
+            "FROM Expense e " +
+            "WHERE e.bank.id = :bankId " +
+            "  AND e.user = :user")
+    BigDecimal sumExpenseByBank(
+            @Param("bankId") UUID bankId,
+            @Param("user")   User user
+    );
 }
