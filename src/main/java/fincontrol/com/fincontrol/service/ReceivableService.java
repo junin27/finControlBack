@@ -47,7 +47,7 @@ public class ReceivableService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with ID: " + userId));
     }
 
-    private ExtraIncome findExtraIncomeByIdAndUser(Long extraIncomeId, User user) {
+    private ExtraIncome findExtraIncomeByIdAndUser(UUID extraIncomeId, User user) {
         return extraIncomeRepository.findByIdAndUserId(extraIncomeId, user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("ExtraIncome with ID " + extraIncomeId + " not found or does not belong to the user."));
     }
@@ -272,7 +272,7 @@ public class ReceivableService {
         ExtraIncome extraIncome = receivable.getExtraIncome();
         ExtraIncomeSimpleDto extraIncomeDto = new ExtraIncomeSimpleDto();
         extraIncomeDto.setId(extraIncome.getId());
-        extraIncomeDto.setDescription(extraIncome.getDescription());
+        extraIncomeDto.setName(extraIncome.getName());
         extraIncomeDto.setValue(extraIncome.getAmount());
         if (extraIncome.getBank() != null) {
             extraIncomeDto.setBankId(extraIncome.getBank().getId());

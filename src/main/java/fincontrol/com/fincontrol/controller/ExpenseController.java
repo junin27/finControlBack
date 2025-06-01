@@ -43,14 +43,19 @@ public class ExpenseController {
     }
 
     private User getAuthenticatedUserEntity() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null) {
-            throw new ResourceNotFoundException("Usuário não autenticado.");
+        String userIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
+        UUID userId;
+
+        try {
+            userId = UUID.fromString(userIdStr);
+        } catch (IllegalArgumentException e) {
+            throw new ResourceNotFoundException("Identificador do usuário autenticado inválido: " + userIdStr);
         }
-        String userEmail = authentication.getName();
-        return userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("Usuário autenticado não encontrado com email: " + userEmail));
+
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário autenticado não encontrado com id: " + userIdStr));
     }
+
 
     @Operation(summary = "Cria uma nova despesa para o usuário autenticado")
     @ApiResponses({

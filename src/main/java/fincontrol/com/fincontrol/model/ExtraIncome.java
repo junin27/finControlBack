@@ -1,28 +1,24 @@
 package fincontrol.com.fincontrol.model;
 
-// IMPORTAÇÕES ADICIONADAS/REVISADAS
 import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.ObjectIdGenerators;
-// import com.fasterxml.jackson.annotation.JsonIgnoreProperties; // Pode ser removido se @JsonIdentityInfo for usado consistentemente
-
 import jakarta.persistence.*;
-import lombok.Data; // Se @Data ainda for desejado, mantenha. Considere @Getter, @Setter, @ToString individualmente.
+import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.UUID;
 
-@Data // Se estiver usando @Data, certifique-se de que não está causando problemas com equals/hashCode em entidades JPA.
-// Alternativamente, use @Getter, @Setter, @NoArgsConstructor, @AllArgsConstructor, @EqualsAndHashCode(of = "id"), @ToString(of = "id")
+@Data
 @Entity
 @Table(name = "extra_incomes")
-// ADICIONAR ESTA ANOTAÇÃO À CLASSE
 @JsonIdentityInfo(
         generator = ObjectIdGenerators.PropertyGenerator.class,
-        property = "id" // "id" é o nome do campo de ID nesta entidade
+        property = "id"
 )
 public class ExtraIncome {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -40,7 +36,7 @@ public class ExtraIncome {
     private Bank bank;
 
     @Column(length = 255)
-    private String description;
+    private String name;
 
     @Column(nullable = false)
     private LocalDate date;
