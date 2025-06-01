@@ -32,7 +32,10 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID> { // Ass
     @org.springframework.transaction.annotation.Transactional
     int deleteAllByUserId(UUID userId);
 
+    void deleteAllByUserAndBankId(User user, UUID bankId);
     boolean existsByCategoryIdAndUserId(UUID categoryId, UUID userId);
+
+
 
     @Query("SELECT e FROM Expense e LEFT JOIN FETCH e.bank WHERE e.user.id = :userId")
     List<Expense> findAllByUserIdWithBankDetails(@Param("userId") UUID userId);

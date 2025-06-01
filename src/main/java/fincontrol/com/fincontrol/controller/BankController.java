@@ -1,7 +1,10 @@
 package fincontrol.com.fincontrol.controller;
 
 import fincontrol.com.fincontrol.dto.*;
+import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
+import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.service.BankService;
+import fincontrol.com.fincontrol.service.UserService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -12,14 +15,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
-import org.springframework.http.HttpStatus; // Não é mais usado para respostas diretas de erro aqui
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
 import java.net.URI;
-// import java.util.Collections; // Não é mais usado para formatar erros aqui
-// import java.util.Map; // Não é mais usado para formatar erros aqui
 import java.util.List;
 import java.util.UUID;
 
@@ -27,10 +28,31 @@ import java.util.UUID;
 @RequestMapping("/api/banks")
 @Tag(name = "Bancos do Usuário", description = "Gerenciamento de bancos do usuário autenticado")
 public class BankController {
-    private final BankService service;
 
-    public BankController(BankService s) {
-        this.service = s;
+    private final BankService service;
+    private final UserService userService;
+
+    public BankController(BankService service, UserService userService) {
+        this.service = service;
+        this.userService = userService;
+    }
+
+    /**
+     * Interpreta o principal recebido (uma String que agora é o ID do usuário em UUID),
+     * carrega o User correspondente e redefine o contexto de autenticação para usar esse UUID.
+     */
+    private void initUserContext(String principal) {
+        UUID userId;
+        try {
+            userId = UUID.fromString(principal);
+        } catch (IllegalArgumentException e) {
+            throw new ResourceNotFoundException("Identificador de usuário inválido no token: " + principal);
+        }
+
+        User user = userService.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Usuário autenticado não encontrado com ID: " + userId));
+        // Não é necessário alterar o SecurityContext aqui, pois o filtro já definiu principal=UUID.
     }
 
     @Operation(summary = "Cria um novo banco para o usuário autenticado")
@@ -38,12 +60,10 @@ public class BankController {
             content = @Content(schema = @Schema(implementation = BankDto.class)))
     @PostMapping
     public ResponseEntity<BankDto> create(
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Dados do banco a criar",
-                    required = true,
-                    content = @Content(schema = @Schema(implementation = BankCreateDto.class))
-            )
-            @Valid @RequestBody BankCreateDto dto) {
+            @Valid @RequestBody BankCreateDto dto,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         BankDto createdBank = service.create(dto);
         URI location = URI.create("/api/banks/" + createdBank.getId());
         return ResponseEntity.created(location).body(createdBank);
@@ -53,7 +73,10 @@ public class BankController {
     @ApiResponse(responseCode = "200", description = "Lista de bancos retornada com sucesso",
             content = @Content(mediaType = "application/json", array = @ArraySchema(schema = @Schema(implementation = BankDto.class))))
     @GetMapping
-    public ResponseEntity<List<BankDto>> listAllUserBanks() { // Retornando ResponseEntity
+    public ResponseEntity<List<BankDto>> listAllUserBanks(
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         return ResponseEntity.ok(service.listAll());
     }
 
@@ -62,18 +85,17 @@ public class BankController {
             @ApiResponse(responseCode = "200", description = "Banco atualizado com sucesso",
                     content = @Content(schema = @Schema(implementation = BankDto.class))),
             @ApiResponse(responseCode = "404", description = "Banco não encontrado ou não pertence ao usuário",
-                    content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class))) // Exemplo de como seu ErrorResponseDto seria referenciado
+                    content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class)))
     })
     @PutMapping("/{id}")
     public ResponseEntity<BankDto> update(
-            @Parameter(description = "ID do banco a atualizar", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @Parameter(description = "ID do banco a atualizar", required = true,
+                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
             @PathVariable UUID id,
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Novos dados do banco",
-                    required = true,
-                    content = @Content(schema = @Schema(implementation = BankUpdateDto.class))
-            )
-            @Valid @RequestBody BankUpdateDto dto) {
+            @Valid @RequestBody BankUpdateDto dto,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         return ResponseEntity.ok(service.update(id, dto));
     }
 
@@ -85,8 +107,12 @@ public class BankController {
     })
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteOneBank(
-            @Parameter(description = "ID do banco a remover", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID id) {
+            @Parameter(description = "ID do banco a remover", required = true,
+                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         service.deleteAll(id);
         return ResponseEntity.noContent().build();
     }
@@ -99,8 +125,12 @@ public class BankController {
     })
     @DeleteMapping("/{id}/clear-incomes")
     public ResponseEntity<Void> clearIncomes(
-            @Parameter(description = "ID do banco para limpar as receitas", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID id) {
+            @Parameter(description = "ID do banco para limpar as receitas", required = true,
+                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         service.clearIncomes(id);
         return ResponseEntity.noContent().build();
     }
@@ -113,17 +143,20 @@ public class BankController {
     })
     @DeleteMapping("/{id}/clear-expenses")
     public ResponseEntity<Void> clearExpenses(
-            @Parameter(description = "ID do banco para limpar as despesas", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID id) {
+            @Parameter(description = "ID do banco para limpar as despesas", required = true,
+                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         service.clearExpenses(id);
         return ResponseEntity.noContent().build();
     }
 
-
     @Operation(summary = "Realiza uma transferência de valor entre dois bancos do usuário.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Transferência realizada com sucesso.",
-                    content = @Content(schema = @Schema(implementation = BankTransferResponseDto.class))), // << Já está correto se você usou este DTO antes
+                    content = @Content(schema = @Schema(implementation = BankTransferResponseDto.class))),
             @ApiResponse(responseCode = "400", description = "Requisição inválida (ex: valor inválido, saldo insuficiente, bancos iguais).",
                     content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class))),
             @ApiResponse(responseCode = "404", description = "Um ou ambos os bancos não encontrados ou não pertencem ao usuário.",
@@ -131,12 +164,13 @@ public class BankController {
     })
     @PostMapping("/transfer")
     public ResponseEntity<BankTransferResponseDto> transferFunds(
-            @Valid @RequestBody BankTransferDto transferDto) {
+            @Valid @RequestBody BankTransferDto transferDto,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         BankTransferResponseDto response = service.transferBetweenBanks(transferDto);
         return ResponseEntity.ok(response);
     }
-
-    // --- Novos Endpoints ---
 
     @Operation(summary = "Atualiza informações de múltiplos bancos do usuário em uma única requisição.")
     @ApiResponses({
@@ -149,12 +183,10 @@ public class BankController {
     })
     @PutMapping("/update-all")
     public ResponseEntity<List<BankDto>> updateAllUserBanks(
-            @io.swagger.v3.oas.annotations.parameters.RequestBody(
-                    description = "Lista de bancos a serem atualizados com seus respectivos IDs e novos dados.",
-                    required = true,
-                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = BankBulkUpdateItemDto.class)))
-            )
-            @Valid @RequestBody List<BankBulkUpdateItemDto> dtoList) {
+            @Valid @RequestBody List<BankBulkUpdateItemDto> dtoList,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         List<BankDto> updatedBanks = service.updateAllBanks(dtoList);
         return ResponseEntity.ok(updatedBanks);
     }
@@ -166,7 +198,10 @@ public class BankController {
                     content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class)))
     })
     @DeleteMapping("/delete-all")
-    public ResponseEntity<Void> deleteAllUserBanks() {
+    public ResponseEntity<Void> deleteAllUserBanks(
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         service.deleteAllUserBanks();
         return ResponseEntity.noContent().build();
     }
@@ -180,8 +215,12 @@ public class BankController {
     })
     @GetMapping("/{bankId}")
     public ResponseEntity<BankDto> getBankById(
-            @Parameter(description = "ID do banco a ser buscado.", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
-            @PathVariable UUID bankId) {
+            @Parameter(description = "ID do banco a ser buscado.", required = true,
+                    example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID bankId,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         BankDto bankDto = service.getBankById(bankId);
         return ResponseEntity.ok(bankDto);
     }
@@ -196,9 +235,12 @@ public class BankController {
                     content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class)))
     })
     @PostMapping("/{bankId}/add-money")
-    public ResponseEntity<BankDto> addMoneyToBank( // Removido '?' e try-catch
-                                                   @Parameter(description = "ID do banco.", required = true) @PathVariable UUID bankId,
-                                                   @Valid @RequestBody AmountDto amountDto) {
+    public ResponseEntity<BankDto> addMoneyToBank(
+            @Parameter(description = "ID do banco.", required = true) @PathVariable UUID bankId,
+            @Valid @RequestBody AmountDto amountDto,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         BankDto updatedBank = service.addMoneyToBank(bankId, amountDto);
         return ResponseEntity.ok(updatedBank);
     }
@@ -211,8 +253,11 @@ public class BankController {
                     content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class)))
     })
     @PostMapping("/add-money-all")
-    public ResponseEntity<List<BankDto>> addMoneyToAllBanks( // Removido '?' e try-catch
-                                                             @Valid @RequestBody AmountDto amountDto) {
+    public ResponseEntity<List<BankDto>> addMoneyToAllBanks(
+            @Valid @RequestBody AmountDto amountDto,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         List<BankDto> updatedBanks = service.addMoneyToAllBanks(amountDto);
         return ResponseEntity.ok(updatedBanks);
     }
@@ -227,9 +272,12 @@ public class BankController {
                     content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class)))
     })
     @PostMapping("/{bankId}/remove-money")
-    public ResponseEntity<BankDto> removeMoneyFromBank( // Removido '?' e try-catch
-                                                        @Parameter(description = "ID do banco.", required = true) @PathVariable UUID bankId,
-                                                        @Valid @RequestBody AmountDto amountDto) {
+    public ResponseEntity<BankDto> removeMoneyFromBank(
+            @Parameter(description = "ID do banco.", required = true) @PathVariable UUID bankId,
+            @Valid @RequestBody AmountDto amountDto,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         BankDto updatedBank = service.removeMoneyFromBank(bankId, amountDto);
         return ResponseEntity.ok(updatedBank);
     }
@@ -242,8 +290,11 @@ public class BankController {
                     content = @Content(schema = @Schema(implementation = fincontrol.com.fincontrol.dto.ErrorResponseDto.class)))
     })
     @PostMapping("/remove-money-all")
-    public ResponseEntity<List<BankDto>> removeMoneyFromAllBanks( // Removido '?' e try-catch
-                                                                  @Valid @RequestBody AmountDto amountDto) {
+    public ResponseEntity<List<BankDto>> removeMoneyFromAllBanks(
+            @Valid @RequestBody AmountDto amountDto,
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         List<BankDto> updatedBanks = service.removeMoneyFromAllBanks(amountDto);
         return ResponseEntity.ok(updatedBanks);
     }
@@ -254,7 +305,10 @@ public class BankController {
                     content = @Content(schema = @Schema(implementation = BankMetricsDto.class)))
     })
     @GetMapping("/metrics")
-    public ResponseEntity<BankMetricsDto> getBankMetrics() {
+    public ResponseEntity<BankMetricsDto> getBankMetrics(
+            @AuthenticationPrincipal String principal
+    ) {
+        initUserContext(principal);
         BankMetricsDto metrics = service.getBankMetrics();
         return ResponseEntity.ok(metrics);
     }

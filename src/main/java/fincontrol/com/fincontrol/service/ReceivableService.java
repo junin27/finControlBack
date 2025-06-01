@@ -48,7 +48,8 @@ public class ReceivableService {
     }
 
     private ExtraIncome findExtraIncomeByIdAndUser(UUID extraIncomeId, User user) {
-        return extraIncomeRepository.findByIdAndUserId(extraIncomeId, user.getId())
+        // Use o método que aceita o objeto User diretamente
+        return extraIncomeRepository.findByIdAndUser(extraIncomeId, user) // Alterado aqui: user em vez de user.getId()
                 .orElseThrow(() -> new ResourceNotFoundException("ExtraIncome with ID " + extraIncomeId + " not found or does not belong to the user."));
     }
 
