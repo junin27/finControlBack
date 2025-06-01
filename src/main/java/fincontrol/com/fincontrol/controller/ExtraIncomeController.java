@@ -17,14 +17,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 @Tag(name = "ExtraIncome", description = "Endpoints para gerenciar Renda Extra (ExtraIncome)")
 @RestController
-@RequestMapping("/api/extra‐incomes")
+@RequestMapping("/api/extra-incomes")
 @Validated
 public class ExtraIncomeController {
 
@@ -47,32 +47,50 @@ public class ExtraIncomeController {
             )
             @Valid @RequestBody ExtraIncomeCreateDto dto
     ) {
-        // Validações de campos obrigatórios
+        // Validações básicas podem ser movidas para o DTO com anotações de validação (e.g. @NotBlank, @NotNull)
+        // No entanto, mantendo a lógica aqui para consistência com o código original.
         if (dto.getName() == null || dto.getName().trim().isEmpty()) {
-            throw new IllegalArgumentException("O campo name é obrigatório, pois não é possível fazer uma entrada de dinheiro sem nome");
+            throw new IllegalArgumentException("O campo name é obrigatório.");
         }
         if (dto.getCategoryId() == null) {
-            throw new IllegalArgumentException("O campo category é obrigatório, pois não é possível fazer uma entrada de dinheiro sem categoria");
+            throw new IllegalArgumentException("O campo categoryId é obrigatório.");
         }
         if (dto.getAmount() == null) {
-            throw new IllegalArgumentException("O campo amount é obrigatório, pois não é possível fazer uma entrada de dinheiro sem valor");
+            throw new IllegalArgumentException("O campo amount é obrigatório.");
         }
         if (dto.getBankId() == null) {
-            throw new IllegalArgumentException("O campo bank é obrigatório, pois não é possível fazer uma entrada de dinheiro sem relação a um banco");
+            throw new IllegalArgumentException("O campo bankId é obrigatório.");
         }
         if (dto.getDate() == null) {
-            throw new IllegalArgumentException("O campo date é obrigatório, pois não é possível fazer uma entrada de dinheiro sem uma data");
+            throw new IllegalArgumentException("O campo date é obrigatório.");
         }
-
-        // Preenche descrição padrão se não informada
         if (dto.getDescription() == null || dto.getDescription().trim().isEmpty()) {
-            dto.setDescription("Campo não Informado pelo Usuário");
+            dto.setDescription("Campo não Informado pelo Usuário"); // Ou deixe como opcional
         }
 
         ExtraIncomeDto created = service.createExtraIncome(dto);
-        URI location = URI.create("/extraincome/" + created.getId());
+        URI location = URI.create("/api/extra-incomes/" + created.getId());
         return ResponseEntity.created(location).body(created);
     }
+
+    // 2. Listar TODAS as rendas extras do usuário
+    @Operation(summary = "Lista todas as Rendas Extras do usuário autenticado")
+    @ApiResponse(responseCode = "200", description = "Lista de Rendas Extras retornada com sucesso",
+            content = @Content(
+                    mediaType = "application/json",
+                    array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeDto.class))
+            ))
+    @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para o usuário (se o serviço retornar nulo ou lançar exceção)",
+            content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))) // Supondo que ErrorResponseDto exista
+    @GetMapping
+    public ResponseEntity<List<ExtraIncomeDto>> listAllExtraIncomes() {
+        List<ExtraIncomeDto> list = service.findAllByCurrentUser();
+        // O serviço já retorna Collections.emptyList() se nada for encontrado,
+        // então não precisamos de uma verificação explícita de nulo/vazio aqui para retornar 404.
+        // Um 200 OK com lista vazia é uma resposta válida para "listar todos".
+        return ResponseEntity.ok(list);
+    }
+
 
     // 3.1 Listar rendas extras por banco
     @Operation(summary = "Lista todas as Rendas Extras do usuário por Banco")
@@ -81,7 +99,7 @@ public class ExtraIncomeController {
                     mediaType = "application/json",
                     array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeDto.class))
             ))
-    @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para o banco informado",
+    @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para o banco informado ou banco não pertence ao usuário",
             content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
     @GetMapping("/bank/{bankId}")
     public ResponseEntity<List<ExtraIncomeDto>> listByBank(
@@ -89,7 +107,7 @@ public class ExtraIncomeController {
             @PathVariable UUID bankId
     ) {
         List<ExtraIncomeDto> list = service.listByBank(bankId);
-        return ResponseEntity.ok(list);
+        return ResponseEntity.ok(list); // O serviço lançará ResourceNotFoundException se o banco não for encontrado/pertencer ao usuário
     }
 
     // 3.2 Listar rendas extras por categoria
@@ -132,7 +150,7 @@ public class ExtraIncomeController {
                     content = @Content(schema = @Schema(implementation = ExtraIncomeDto.class))),
             @ApiResponse(responseCode = "400", description = "Campo obrigatório enviado vazio ou inválido",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
-            @ApiResponse(responseCode = "404", description = "Renda Extra não encontrada para o usuário",
+            @ApiResponse(responseCode = "404", description = "Renda Extra ou recursos associados (ex: Banco) não encontrados para o usuário",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @PutMapping("/{id}")
@@ -146,23 +164,8 @@ public class ExtraIncomeController {
             )
             @Valid @RequestBody ExtraIncomeUpdateDto dto
     ) {
-        // Se vier algum campo obrigatório no body, validar vazio
-        if (dto.getName() != null && dto.getName().trim().isEmpty()) {
-            throw new IllegalArgumentException("O campo name é obrigatório, pois não é possível fazer uma entrada de dinheiro sem nome");
-        }
-        if (dto.getCategoryId() != null && dto.getCategoryId() == null) {
-            throw new IllegalArgumentException("O campo category é obrigatório, pois não é possível fazer uma entrada de dinheiro sem categoria");
-        }
-        if (dto.getAmount() != null && dto.getAmount() == null) {
-            throw new IllegalArgumentException("O campo amount é obrigatório, pois não é possível fazer uma entrada de dinheiro sem valor");
-        }
-        if (dto.getBankId() != null && dto.getBankId() == null) {
-            throw new IllegalArgumentException("O campo bank é obrigatório, pois não é possível fazer uma entrada de dinheiro sem relação a um banco");
-        }
-        if (dto.getDate() != null && dto.getDate() == null) {
-            throw new IllegalArgumentException("O campo date é obrigatório, pois não é possível fazer uma entrada de dinheiro sem uma data");
-        }
-
+        // Validações de campos vazios podem ser feitas no serviço ou com anotações no DTO.
+        // Ex: if (dto.getName() != null && dto.getName().trim().isEmpty()) { throw new IllegalArgumentException("O campo name não pode ser vazio se fornecido."); }
         ExtraIncomeDto updated = service.updateExtraIncome(id, dto);
         return ResponseEntity.ok(updated);
     }
@@ -212,9 +215,10 @@ public class ExtraIncomeController {
     // 7.2 Deletar TODAS as rendas extras do usuário
     @Operation(summary = "Deleta todas as Rendas Extras cadastradas pelo usuário autenticado")
     @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Todas as Rendas Extras foram deletadas com sucesso"),
-            @ApiResponse(responseCode = "404", description = "O usuário não possui nenhuma Renda Extra cadastrada",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+            @ApiResponse(responseCode = "204", description = "Todas as Rendas Extras foram deletadas com sucesso (ou nenhuma existia)"),
+            // O serviço não lança mais 404 se não houver nada para deletar, então remover essa resposta.
+            // @ApiResponse(responseCode = "404", description = "O usuário não possui nenhuma Renda Extra cadastrada",
+            //         content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @DeleteMapping
     public ResponseEntity<Void> deleteAll() {
@@ -223,10 +227,10 @@ public class ExtraIncomeController {
     }
 
     // 7.3 Deletar TODAS as rendas extras associadas a um banco específico
-    @Operation(summary = "Deleta todas as Rendas Extras de um Banco específico")
+    @Operation(summary = "Deleta todas as Rendas Extras de um Banco específico do usuário")
     @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Rendas Extras desse banco deletadas com sucesso"),
-            @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para o banco informado",
+            @ApiResponse(responseCode = "204", description = "Rendas Extras desse banco deletadas com sucesso (ou nenhuma existia)"),
+            @ApiResponse(responseCode = "404", description = "Banco não encontrado ou não pertence ao usuário",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @DeleteMapping("/bank/{bankId}")
@@ -239,11 +243,12 @@ public class ExtraIncomeController {
     }
 
     // 7.4 Deletar TODAS as rendas extras associadas a uma categoria específica
-    @Operation(summary = "Deleta todas as Rendas Extras de uma Categoria específica")
+    @Operation(summary = "Deleta todas as Rendas Extras de uma Categoria específica do usuário")
     @ApiResponses({
-            @ApiResponse(responseCode = "204", description = "Rendas Extras dessa categoria deletadas com sucesso"),
-            @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para a categoria informada",
-                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+            @ApiResponse(responseCode = "204", description = "Rendas Extras dessa categoria deletadas com sucesso (ou nenhuma existia)"),
+            // Se a categoria não existir, o serviço pode não lançar um 404, mas apenas não deletar nada.
+            // @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para a categoria informada",
+            //         content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @DeleteMapping("/category/{categoryId}")
     public ResponseEntity<Void> deleteAllByCategory(
@@ -271,7 +276,7 @@ public class ExtraIncomeController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "JSON contendo o campo 'value' com o valor a ser somado (ex: { \"value\": 25.50 })",
                     required = true,
-                    content = @Content(schema = @Schema(implementation = ValueDto.class))
+                    content = @Content(schema = @Schema(implementation = ValueDto.class)) // Supondo que ValueDto exista
             )
             @Valid @RequestBody ValueDto body
     ) {
@@ -355,9 +360,9 @@ public class ExtraIncomeController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Transferência realizada com sucesso",
                     content = @Content(schema = @Schema(implementation = ExtraIncomeTransferDto.class))),
-            @ApiResponse(responseCode = "400", description = "Campo obrigatório ausente (fromId, toId ou value)",
+            @ApiResponse(responseCode = "400", description = "Campo obrigatório ausente (fromId, toId ou value) ou IDs iguais",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
-            @ApiResponse(responseCode = "404", description = "Alguma das Rendas Extras (fromId ou toId) não encontrada",
+            @ApiResponse(responseCode = "404", description = "Alguma das Rendas Extras (fromId ou toId) não encontrada para o usuário",
                     content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
     })
     @PostMapping("/transfer")
@@ -365,7 +370,7 @@ public class ExtraIncomeController {
             @io.swagger.v3.oas.annotations.parameters.RequestBody(
                     description = "JSON com campos fromId, toId e value (ex: { \"fromId\": \"uuidOrigem\", \"toId\": \"uuidDestino\", \"value\": 20.00 })",
                     required = true,
-                    content = @Content(schema = @Schema(implementation = ExtraIncomeTransferRequestDto.class))
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeTransferRequestDto.class)) // Supondo que ExtraIncomeTransferRequestDto exista
             )
             @Valid @RequestBody ExtraIncomeTransferRequestDto dto
     ) {
