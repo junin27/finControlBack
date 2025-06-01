@@ -8,9 +8,10 @@ import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.repository.UserRepository;
 import io.micrometer.core.annotation.Timed;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.core.Authentication; // Adicionado
-import org.springframework.security.core.context.SecurityContextHolder; // Adicionado
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,7 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Service
+@Slf4j
 public class UserService {
 
     private final UserRepository userRepository;
@@ -41,6 +43,9 @@ public class UserService {
     @Timed(value = "user.register.time", description = "Tempo para registrar um novo usuário")
     @Transactional
     public User register(UserRegisterDto dto) {
+        if (userRepository.findByEmail(dto.getEmail().toLowerCase().trim()).isPresent()) {
+            throw new InvalidOperationException("O e-mail '" + dto.getEmail() + "' já está cadastrado.");
+        }
         if (!dto.getPassword().equals(dto.getConfirmPassword())) {
             throw new InvalidOperationException("As duas senhas não conferem, elas precisam ter os mesmos caracteres exatamente iguais.");
         }
@@ -49,7 +54,9 @@ public class UserService {
         u.setEmail(dto.getEmail().toLowerCase().trim());
         u.setPasswordHash(encoder.encode(dto.getPassword()));
         u.setSalary(dto.getSalary());
-        return userRepository.save(u);
+        User savedUser = userRepository.save(u);
+        log.info("Usuário registrado com ID: {} e email: {}", savedUser.getId(), savedUser.getEmail());
+        return savedUser;
     }
 
     @Timed(value = "user.authenticate.time", description = "Tempo para autenticar um usuário")
@@ -60,6 +67,7 @@ public class UserService {
         if (!encoder.matches(dto.getPassword(), u.getPasswordHash())) {
             throw new BadCredentialsException("A sua senha está incorreta.");
         }
+        log.info("Usuário autenticado com email: {}", u.getEmail());
         return u;
     }
 
@@ -84,6 +92,7 @@ public class UserService {
         User u = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado com ID: " + id));
 
+        boolean needsUpdate = false;
         if (dto.getName() != null) {
             String trimmedName = dto.getName().trim();
             if (!StringUtils.hasText(trimmedName)) {
@@ -92,7 +101,10 @@ public class UserService {
             if (!NAME_PATTERN.matcher(trimmedName).matches()) {
                 throw new InvalidOperationException("O nome deve ser completo (ao menos duas palavras) e conter apenas letras, espaços ou apóstrofos.");
             }
-            u.setName(trimmedName);
+            if (!trimmedName.equals(u.getName())) {
+                u.setName(trimmedName);
+                needsUpdate = true;
+            }
         }
 
         if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
@@ -103,15 +115,24 @@ public class UserService {
                 throw new InvalidOperationException("A nova senha está fraca, ela precisa possuir ao menos letras e números.");
             }
             u.setPasswordHash(encoder.encode(dto.getPassword()));
+            needsUpdate = true;
         }
 
         if (dto.getSalary() != null) {
             if (dto.getSalary().compareTo(BigDecimal.ZERO) < 0) {
                 throw new InvalidOperationException("O salário mensal precisa ser maior ou igual a 0.");
             }
-            u.setSalary(dto.getSalary());
+            if (u.getSalary().compareTo(dto.getSalary()) != 0) {
+                u.setSalary(dto.getSalary());
+                needsUpdate = true;
+            }
         }
-        return userRepository.save(u);
+        if (needsUpdate) {
+            User updatedUser = userRepository.save(u);
+            log.info("Usuário (ID: {}) atualizado.", updatedUser.getId());
+            return updatedUser;
+        }
+        return u;
     }
 
     @Timed(value = "user.deleteService.time", description = "Tempo para remover usuário (serviço)")
@@ -120,44 +141,62 @@ public class UserService {
         if (!userRepository.existsById(id)) {
             throw new ResourceNotFoundException("Usuário não encontrado com ID: " + id + " para exclusão.");
         }
+        // Adicionar aqui a lógica para desassociar/deletar entidades relacionadas ao usuário ANTES de deletar o usuário,
+        // para evitar DataIntegrityViolationException (ex: bancos, categorias, rendas, despesas).
+        // Exemplo: bankRepository.deleteAllByUserId(id); categoryRepository.deleteAllByUserId(id); etc.
+        // Ou configurar CascadeType.REMOVE nas relações na entidade User.
         userRepository.deleteById(id);
+        log.info("Usuário (ID: {}) deletado.", id);
     }
 
-    // --- MÉTODO ADICIONADO ---
+    // --- MÉTODO CORRIGIDO ---
     /**
-     * Retrieves the ID of the currently authenticated user.
+     * Retrieves the ID of the currently authenticated user from the SecurityContext.
+     * The principal name is expected to be the user's UUID as a String,
+     * as set by JWTAuthenticationFilter.
      *
      * @return The UUID of the authenticated user.
-     * @throws ResourceNotFoundException if the user is not authenticated or not found in the database.
+     * @throws ResourceNotFoundException if the user is not authenticated,
+     * the principal identifier is not a valid UUID,
+     * or the user is not found in the database.
      * @throws IllegalStateException if the authenticated principal is not of an expected type.
      */
     public UUID getAuthenticatedUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
-            // Em um cenário ideal, o Spring Security já bloquearia o acesso não autenticado aos endpoints protegidos.
-            // Esta exceção é uma salvaguarda adicional.
-            throw new ResourceNotFoundException("User not authenticated. Cannot retrieve authenticated user ID.");
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal().toString())) {
+            log.warn("Tentativa de obter ID de usuário não autenticado.");
+            throw new ResourceNotFoundException("Usuário não autenticado. Não é possível recuperar o ID do usuário autenticado.");
         }
 
-        String username; // Geralmente o e-mail, conforme sua configuração de segurança
+        String principalIdentifier;
         Object principal = authentication.getPrincipal();
 
-        if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
-            username = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
-        } else if (principal instanceof String) {
-            // Se o principal for diretamente uma String (pode acontecer em algumas configurações de teste ou customizadas)
-            username = (String) principal;
+        if (principal instanceof String) {
+            principalIdentifier = (String) principal;
+        } else if (principal instanceof org.springframework.security.core.userdetails.UserDetails) {
+            // Este caso é um fallback. O JWTAuthenticationFilter define o principal como String (UUID).
+            // Se UserDetails.getUsername() retornar o email, esta lógica falharia em converter para UUID.
+            // Idealmente, o principal já é a String do UUID.
+            principalIdentifier = ((org.springframework.security.core.userdetails.UserDetails) principal).getUsername();
+            log.debug("Principal é instância de UserDetails, username (esperado ser UUID String) obtido: {}", principalIdentifier);
         } else {
-            // Se o tipo do principal não for esperado
-            throw new IllegalStateException("Authenticated principal is not of an expected type: " + principal.getClass().getName() +
-                    ". Could not extract username for user lookup.");
+            log.error("Principal autenticado não é do tipo String nem UserDetails: {}", principal.getClass().getName());
+            throw new IllegalStateException("Principal autenticado não é de um tipo esperado: " + principal.getClass().getName() +
+                    ". Não foi possível extrair o identificador do usuário.");
         }
 
-        // Utiliza o método findByEmail que já existe e normaliza o e-mail (toLowerCase, trim)
-        User user = this.findByEmail(username)
-                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found in database with email: " + username));
-
-        // Assumindo que sua entidade User tem um método getId() que retorna UUID
-        return user.getId();
+        try {
+            UUID userId = UUID.fromString(principalIdentifier);
+            // Valida se o usuário com este ID realmente existe no banco de dados.
+            if (!userRepository.existsById(userId)) {
+                log.warn("ID de usuário autenticado ({}) presente no token não foi encontrado no banco de dados.", userId);
+                throw new ResourceNotFoundException("Usuário autenticado (ID do token: " + userId + ") não encontrado no banco de dados.");
+            }
+            log.debug("ID do usuário autenticado recuperado com sucesso: {}", userId);
+            return userId;
+        } catch (IllegalArgumentException e) {
+            log.error("Identificador do usuário ('{}') obtido do token de autenticação não é um UUID válido.", principalIdentifier, e);
+            throw new ResourceNotFoundException("Identificador do usuário ('" + principalIdentifier + "') no token de autenticação não é um UUID válido.", e);
+        }
     }
 }

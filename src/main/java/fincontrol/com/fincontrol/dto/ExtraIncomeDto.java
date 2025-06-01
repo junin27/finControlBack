@@ -8,26 +8,52 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime; // Adicionado para createdAt/updatedAt
 import java.util.UUID;
+// import java.lang.Long; // Import não é estritamente necessário para Long
 
 @Data
-@Schema(name = "ExtraIncomeDto", description = "Dados para criação de uma entrada de renda extra")
-public class ExtraIncomeDto {
+@Schema(name = "ExtraIncomeResponseDto", description = "Dados de uma renda extra") // Renomeado para clareza, opcional
+public class ExtraIncomeDto { // Mantido o nome da classe como ExtraIncomeDto por consistência com seu uso
+
+    @Schema(description = "ID da renda extra", example = "101")
+    private Long id; // <<< ADICIONADO E TIPO CORRETO (Long)
 
     @NotNull
     @Positive
-    @Schema(description = "Valor da renda extra (em reais)", example = "350.00", required = true)
+    @Schema(description = "Valor da renda", example = "500.00", requiredMode = Schema.RequiredMode.REQUIRED)
     private BigDecimal amount;
 
     @NotNull
-    @Schema(description = "UUID da categoria associada à renda extra", example = "e7a1c3b2-4f9d-4a3d-8c9e-1b2d3f4a5e6f", required = true)
+    @Schema(description = "ID da categoria da renda extra", example = "39fa4c61-dfc5-4191-8571-f18073dc2e88", requiredMode = Schema.RequiredMode.REQUIRED)
     private UUID categoryId;
 
+    @Schema(description = "Nome da categoria da renda extra", example = "Salário")
+    private String categoryName; // <<< ADICIONADO
+
     @Size(max = 255)
-    @Schema(description = "Descrição opcional da renda extra", example = "Freelance de design")
+    @Schema(description = "Descrição da renda extra", example = "Freelance")
     private String description;
 
     @NotNull
-    @Schema(description = "Data da entrada no formato YYYY-MM-DD", example = "2025-05-18", required = true)
+    @Schema(description = "Data da renda extra", example = "2025-05-31", requiredMode = Schema.RequiredMode.REQUIRED)
     private LocalDate date;
+
+    @Schema(description = "ID do banco associado à renda extra", example = "f1e2d3c4-b5a6-7890-1234-abcdef567890")
+    private UUID bankId;
+
+    @Schema(description = "Nome do banco associado", example = "Banco Principal")
+    private String bankName; // <<< ADICIONADO
+
+    @Schema(description = "ID do usuário proprietário da renda extra")
+    private UUID userId; // <<< ADICIONADO
+
+    @Schema(description = "Nome/identificador do usuário proprietário")
+    private String userName; // <<< ADICIONADO
+
+    @Schema(description = "Data de criação do registro")
+    private LocalDateTime createdAt; // <<< ADICIONADO
+
+    @Schema(description = "Data da última atualização do registro")
+    private LocalDateTime updatedAt; // <<< ADICIONADO
 }

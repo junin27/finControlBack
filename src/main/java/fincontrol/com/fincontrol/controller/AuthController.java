@@ -15,7 +15,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.media.ExampleObject; // Para exemplos mais detalhados
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -131,7 +131,8 @@ public class AuthController {
             @Valid @RequestBody LoginDto dto
     ) {
         User u = userService.authenticate(dto);
-        String token = tokenProvider.generateToken(u.getEmail());
+        // Chamada corrigida para incluir o ID do usuário
+        String token = tokenProvider.generateToken(u.getEmail(), u.getId());
         return ResponseEntity.ok(Map.of("token", "Bearer " + token, "userId", u.getId().toString(), "userName", u.getName()));
     }
 }
