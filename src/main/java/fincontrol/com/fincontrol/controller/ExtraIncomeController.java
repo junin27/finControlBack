@@ -1,116 +1,375 @@
 package fincontrol.com.fincontrol.controller;
 
-import fincontrol.com.fincontrol.dto.ExtraIncomeDto;
+import fincontrol.com.fincontrol.dto.*;
 import fincontrol.com.fincontrol.service.ExtraIncomeService;
+
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j; // <<< ADICIONE ESTE IMPORT
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
-// import fincontrol.com.fincontrol.security.UserDetailsImpl; // Descomente se UserDetailsImpl existir e for usado
 
-import java.security.Principal;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+
+import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 
-@Tag(name = "Renda Extra")
+@Tag(name = "ExtraIncome", description = "Endpoints para gerenciar Renda Extra (ExtraIncome)")
 @RestController
-@RequestMapping("/api/extra-incomes")
-@RequiredArgsConstructor
-@Slf4j // <<< ADICIONE ESTA ANOTAÇÃO
+@RequestMapping("/extraincome")
+@Validated
 public class ExtraIncomeController {
 
-    private final ExtraIncomeService incomeService;
+    private final ExtraIncomeService service;
 
-    @Operation(summary = "Criar nova renda extra")
-    @ApiResponse(responseCode = "201", description = "Renda extra criada com sucesso",
+    public ExtraIncomeController(ExtraIncomeService service) {
+        this.service = service;
+    }
+
+    // 1. Criar nova renda extra
+    @Operation(summary = "Cria uma nova Renda Extra para o usuário autenticado")
+    @ApiResponse(responseCode = "201", description = "Renda Extra criada com sucesso",
             content = @Content(schema = @Schema(implementation = ExtraIncomeDto.class)))
     @PostMapping
-    public ResponseEntity<ExtraIncomeDto> createIncome(
-            @Valid @RequestBody ExtraIncomeDto dto,
-            Principal principal) {
-        UUID userId = getUserIdFromPrincipal(principal);
-        ExtraIncomeDto createdDto = incomeService.createIncome(userId, dto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(createdDto);
-    }
-
-    @Operation(summary = "Listar rendas do usuário")
-    @ApiResponse(responseCode = "200", description = "Lista de rendas extras retornada com sucesso",
-            content = @Content(array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeDto.class))))
-    @GetMapping
-    public ResponseEntity<List<ExtraIncomeDto>> listUserIncomes(Principal principal) {
-        UUID userId = getUserIdFromPrincipal(principal);
-        List<ExtraIncomeDto> dtoList = incomeService.getIncomesByUser(userId);
-        return ResponseEntity.ok(dtoList);
-    }
-
-    @Operation(summary = "Listar rendas por banco")
-    @ApiResponse(responseCode = "200", description = "Lista de rendas extras por banco retornada com sucesso",
-            content = @Content(array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeDto.class))))
-    @GetMapping("/by-bank/{bankId}")
-    public ResponseEntity<List<ExtraIncomeDto>> listIncomesByBank(
-            @PathVariable UUID bankId,
-            Principal principal) {
-        UUID userId = getUserIdFromPrincipal(principal);
-        List<ExtraIncomeDto> dtoList = incomeService.getIncomesByBankAndUser(bankId, userId);
-        return ResponseEntity.ok(dtoList);
-    }
-
-    private UUID getUserIdFromPrincipal(Principal principal) {
-        if (principal == null) {
-            // Este log não será alcançado se a exceção for lançada antes.
-            // Se você quiser logar antes de lançar a exceção, mova o log para cima.
-            log.error("Principal é nulo. Acesso não autenticado ou problema na configuração de segurança.");
-            throw new IllegalStateException("Principal não pode ser nulo. Verifique a configuração de segurança e a autenticação.");
+    public ResponseEntity<ExtraIncomeDto> createExtraIncome(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Dados para criação de uma nova Renda Extra",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeCreateDto.class))
+            )
+            @Valid @RequestBody ExtraIncomeCreateDto dto
+    ) {
+        // Validações de campos obrigatórios
+        if (dto.getName() == null || dto.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("O campo name é obrigatório, pois não é possível fazer uma entrada de dinheiro sem nome");
+        }
+        if (dto.getCategoryId() == null) {
+            throw new IllegalArgumentException("O campo category é obrigatório, pois não é possível fazer uma entrada de dinheiro sem categoria");
+        }
+        if (dto.getAmount() == null) {
+            throw new IllegalArgumentException("O campo amount é obrigatório, pois não é possível fazer uma entrada de dinheiro sem valor");
+        }
+        if (dto.getBankId() == null) {
+            throw new IllegalArgumentException("O campo bank é obrigatório, pois não é possível fazer uma entrada de dinheiro sem relação a um banco");
+        }
+        if (dto.getDate() == null) {
+            throw new IllegalArgumentException("O campo date é obrigatório, pois não é possível fazer uma entrada de dinheiro sem uma data");
         }
 
-        if (principal instanceof Authentication) {
-            Authentication authentication = (Authentication) principal;
-            Object principalDetails = authentication.getPrincipal();
-
-            if (principalDetails instanceof String) {
-                String userIdString = (String) principalDetails;
-                if ("anonymousUser".equals(userIdString)) {
-                    log.warn("Tentativa de acesso por usuário anônimo bloqueada.");
-                    throw new IllegalStateException("Acesso anônimo não permitido para esta operação.");
-                }
-                try {
-                    return UUID.fromString(userIdString);
-                } catch (IllegalArgumentException e) {
-                    log.error("O principal (String) não é um UUID válido: '{}'", userIdString, e);
-                    throw new IllegalStateException("O principal (String) obtido da autenticação não é um UUID válido: " + userIdString, e);
-                }
-                // } else if (principalDetails instanceof UserDetailsImpl) { // Exemplo se você usa um UserDetails customizado
-                // UserDetailsImpl userDetails = (UserDetailsImpl) principalDetails;
-                // return userDetails.getId(); // Supondo que UserDetailsImpl tenha getId()
-            } else {
-                String detailsType = (principalDetails != null) ? principalDetails.getClass().getName() : "null";
-                log.warn("Detalhes do principal não são do tipo String (UUID) esperado ou UserDetailsImpl customizado. Tipo encontrado: {}", detailsType);
-                try {
-                    // Tentar authentication.getName() como fallback. Certifique-se que isso retorna o UUID.
-                    return UUID.fromString(authentication.getName());
-                } catch (IllegalArgumentException e) {
-                    log.error("Falha ao converter authentication.getName() ('{}') para UUID.", authentication.getName(), e);
-                    throw new IllegalStateException("Não foi possível determinar o UUID do usuário a partir do Principal. Detalhes do tipo: " + detailsType, e);
-                }
-            }
-        } else {
-            // Este caso é menos provável com Spring Security configurado corretamente.
-            log.warn("Principal não é uma instância de Authentication. Tipo do Principal: {}", principal.getClass().getName());
-            try {
-                return UUID.fromString(principal.getName());
-            } catch (Exception e) {
-                log.error("Não foi possível extrair o UUID do usuário do Principal (tipo: {}, nome: '{}')", principal.getClass().getName(), principal.getName(), e);
-                throw new IllegalStateException("Não foi possível extrair o UUID do usuário do Principal (tipo: " + principal.getClass().getName() + ", nome: " + principal.getName() + ")", e);
-            }
+        // Preenche descrição padrão se não informada
+        if (dto.getDescription() == null || dto.getDescription().trim().isEmpty()) {
+            dto.setDescription("Campo não Informado pelo Usuário");
         }
+
+        ExtraIncomeDto created = service.createExtraIncome(dto);
+        URI location = URI.create("/extraincome/" + created.getId());
+        return ResponseEntity.created(location).body(created);
+    }
+
+    // 3.1 Listar rendas extras por banco
+    @Operation(summary = "Lista todas as Rendas Extras do usuário por Banco")
+    @ApiResponse(responseCode = "200", description = "Lista de Rendas Extras retornada com sucesso",
+            content = @Content(
+                    mediaType = "application/json",
+                    array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeDto.class))
+            ))
+    @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para o banco informado",
+            content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    @GetMapping("/bank/{bankId}")
+    public ResponseEntity<List<ExtraIncomeDto>> listByBank(
+            @Parameter(description = "UUID do Banco", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID bankId
+    ) {
+        List<ExtraIncomeDto> list = service.listByBank(bankId);
+        return ResponseEntity.ok(list);
+    }
+
+    // 3.2 Listar rendas extras por categoria
+    @Operation(summary = "Lista todas as Rendas Extras do usuário por Categoria")
+    @ApiResponse(responseCode = "200", description = "Lista de Rendas Extras retornada com sucesso",
+            content = @Content(
+                    mediaType = "application/json",
+                    array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeDto.class))
+            ))
+    @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para a categoria informada",
+            content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    @GetMapping("/category/{categoryId}")
+    public ResponseEntity<List<ExtraIncomeDto>> listByCategory(
+            @Parameter(description = "UUID da Categoria", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID categoryId
+    ) {
+        List<ExtraIncomeDto> list = service.listByCategory(categoryId);
+        return ResponseEntity.ok(list);
+    }
+
+    // 4. Buscar UMA renda extra específica
+    @Operation(summary = "Busca uma única Renda Extra por ID")
+    @ApiResponse(responseCode = "200", description = "Renda Extra retornada com sucesso",
+            content = @Content(schema = @Schema(implementation = ExtraIncomeDto.class)))
+    @ApiResponse(responseCode = "404", description = "Renda Extra não encontrada para o usuário",
+            content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    @GetMapping("/{id}")
+    public ResponseEntity<ExtraIncomeDto> getOne(
+            @Parameter(description = "UUID da Renda Extra", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id
+    ) {
+        ExtraIncomeDto dto = service.getById(id);
+        return ResponseEntity.ok(dto);
+    }
+
+    // 5. Atualizar UMA renda extra específica
+    @Operation(summary = "Atualiza uma Renda Extra por ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Renda Extra atualizada com sucesso",
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeDto.class))),
+            @ApiResponse(responseCode = "400", description = "Campo obrigatório enviado vazio ou inválido",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Renda Extra não encontrada para o usuário",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PutMapping("/{id}")
+    public ResponseEntity<ExtraIncomeDto> updateOne(
+            @Parameter(description = "UUID da Renda Extra a ser atualizada", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Dados para atualização da Renda Extra (campos opcionais: name, description, amount, date, categoryId, bankId)",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeUpdateDto.class))
+            )
+            @Valid @RequestBody ExtraIncomeUpdateDto dto
+    ) {
+        // Se vier algum campo obrigatório no body, validar vazio
+        if (dto.getName() != null && dto.getName().trim().isEmpty()) {
+            throw new IllegalArgumentException("O campo name é obrigatório, pois não é possível fazer uma entrada de dinheiro sem nome");
+        }
+        if (dto.getCategoryId() != null && dto.getCategoryId() == null) {
+            throw new IllegalArgumentException("O campo category é obrigatório, pois não é possível fazer uma entrada de dinheiro sem categoria");
+        }
+        if (dto.getAmount() != null && dto.getAmount() == null) {
+            throw new IllegalArgumentException("O campo amount é obrigatório, pois não é possível fazer uma entrada de dinheiro sem valor");
+        }
+        if (dto.getBankId() != null && dto.getBankId() == null) {
+            throw new IllegalArgumentException("O campo bank é obrigatório, pois não é possível fazer uma entrada de dinheiro sem relação a um banco");
+        }
+        if (dto.getDate() != null && dto.getDate() == null) {
+            throw new IllegalArgumentException("O campo date é obrigatório, pois não é possível fazer uma entrada de dinheiro sem uma data");
+        }
+
+        ExtraIncomeDto updated = service.updateExtraIncome(id, dto);
+        return ResponseEntity.ok(updated);
+    }
+
+    // 6. Atualizar TODAS as rendas extras do usuário de uma vez
+    @Operation(summary = "Atualiza todas as Rendas Extras do usuário (lote)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Rendas Extras atualizadas com sucesso",
+                    content = @Content(
+                            mediaType = "application/json",
+                            array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeDto.class))
+                    )),
+            @ApiResponse(responseCode = "400", description = "Campo obrigatório enviado vazio ou inválido em algum item",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra cadastrada para o usuário ou ID não encontrado",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PutMapping
+    public ResponseEntity<List<ExtraIncomeDto>> batchUpdate(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Lista de objetos com campos obrigatórios: id e quaisquer outros campos a atualizar",
+                    required = true,
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeBatchUpdateDto.class)))
+            )
+            @Valid @RequestBody List<ExtraIncomeBatchUpdateDto> dtos
+    ) {
+        List<ExtraIncomeDto> updatedList = service.batchUpdate(dtos);
+        return ResponseEntity.ok(updatedList);
+    }
+
+    // 7.1 Deletar UMA renda extra específica
+    @Operation(summary = "Deleta uma única Renda Extra por ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Renda Extra deletada com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Renda Extra não encontrada para o usuário",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteOne(
+            @Parameter(description = "UUID da Renda Extra a ser deletada", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id
+    ) {
+        service.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    // 7.2 Deletar TODAS as rendas extras do usuário
+    @Operation(summary = "Deleta todas as Rendas Extras cadastradas pelo usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Todas as Rendas Extras foram deletadas com sucesso"),
+            @ApiResponse(responseCode = "404", description = "O usuário não possui nenhuma Renda Extra cadastrada",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @DeleteMapping
+    public ResponseEntity<Void> deleteAll() {
+        service.deleteAll();
+        return ResponseEntity.noContent().build();
+    }
+
+    // 7.3 Deletar TODAS as rendas extras associadas a um banco específico
+    @Operation(summary = "Deleta todas as Rendas Extras de um Banco específico")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Rendas Extras desse banco deletadas com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para o banco informado",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @DeleteMapping("/bank/{bankId}")
+    public ResponseEntity<Void> deleteAllByBank(
+            @Parameter(description = "UUID do Banco", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID bankId
+    ) {
+        service.deleteAllByBank(bankId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // 7.4 Deletar TODAS as rendas extras associadas a uma categoria específica
+    @Operation(summary = "Deleta todas as Rendas Extras de uma Categoria específica")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Rendas Extras dessa categoria deletadas com sucesso"),
+            @ApiResponse(responseCode = "404", description = "Nenhuma Renda Extra encontrada para a categoria informada",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @DeleteMapping("/category/{categoryId}")
+    public ResponseEntity<Void> deleteAllByCategory(
+            @Parameter(description = "UUID da Categoria", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID categoryId
+    ) {
+        service.deleteAllByCategory(categoryId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // 8.1 Somar valor a UMA renda extra específica
+    @Operation(summary = "Adiciona um valor ao campo amount de uma Renda Extra específica")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Valor somado com sucesso",
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeAmountOperationDto.class))),
+            @ApiResponse(responseCode = "400", description = "Campo 'value' ausente ou inválido",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Renda Extra não encontrada para o usuário",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PatchMapping("/{id}/add")
+    public ResponseEntity<ExtraIncomeAmountOperationDto> addToOne(
+            @Parameter(description = "UUID da Renda Extra", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "JSON contendo o campo 'value' com o valor a ser somado (ex: { \"value\": 25.50 })",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = ValueDto.class))
+            )
+            @Valid @RequestBody ValueDto body
+    ) {
+        ExtraIncomeAmountOperationDto result = service.addToOne(id, body.getValue());
+        return ResponseEntity.ok(result);
+    }
+
+    // 8.2 Somar valor a TODAS as rendas extras do usuário
+    @Operation(summary = "Adiciona um valor ao campo amount de todas as Rendas Extras do usuário")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Valores somados com sucesso",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeAmountOperationDto.class)))),
+            @ApiResponse(responseCode = "400", description = "Campo 'value' ausente ou inválido",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Usuário não possui nenhuma Renda Extra cadastrada",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PatchMapping("/add")
+    public ResponseEntity<List<ExtraIncomeAmountOperationDto>> addToAll(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "JSON contendo o campo 'value' com o valor a ser somado (ex: { \"value\": 10.00 })",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = ValueDto.class))
+            )
+            @Valid @RequestBody ValueDto body
+    ) {
+        List<ExtraIncomeAmountOperationDto> resultList = service.addToAll(body.getValue());
+        return ResponseEntity.ok(resultList);
+    }
+
+    // 8.3 Subtrair valor de UMA renda extra específica
+    @Operation(summary = "Subtrai um valor do campo amount de uma Renda Extra específica")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Valor subtraído com sucesso",
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeAmountOperationDto.class))),
+            @ApiResponse(responseCode = "400", description = "Campo 'value' ausente ou inválido",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Renda Extra não encontrada para o usuário",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PatchMapping("/{id}/subtract")
+    public ResponseEntity<ExtraIncomeAmountOperationDto> subtractFromOne(
+            @Parameter(description = "UUID da Renda Extra", required = true, example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+            @PathVariable UUID id,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "JSON contendo o campo 'value' com o valor a ser subtraído (ex: { \"value\": 5.00 })",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = ValueDto.class))
+            )
+            @Valid @RequestBody ValueDto body
+    ) {
+        ExtraIncomeAmountOperationDto result = service.subtractFromOne(id, body.getValue());
+        return ResponseEntity.ok(result);
+    }
+
+    // 8.4 Subtrair valor de TODAS as rendas extras do usuário
+    @Operation(summary = "Subtrai um valor do campo amount de todas as Rendas Extras do usuário")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Valores subtraídos com sucesso",
+                    content = @Content(array = @ArraySchema(schema = @Schema(implementation = ExtraIncomeAmountOperationDto.class)))),
+            @ApiResponse(responseCode = "400", description = "Campo 'value' ausente ou inválido",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Usuário não possui nenhuma Renda Extra cadastrada",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PatchMapping("/subtract")
+    public ResponseEntity<List<ExtraIncomeAmountOperationDto>> subtractFromAll(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "JSON contendo o campo 'value' com o valor a ser subtraído (ex: { \"value\": 2.50 })",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = ValueDto.class))
+            )
+            @Valid @RequestBody ValueDto body
+    ) {
+        List<ExtraIncomeAmountOperationDto> resultList = service.subtractFromAll(body.getValue());
+        return ResponseEntity.ok(resultList);
+    }
+
+    // 9. Transferência entre duas rendas extras
+    @Operation(summary = "Transfere valor entre duas Rendas Extras")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Transferência realizada com sucesso",
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeTransferDto.class))),
+            @ApiResponse(responseCode = "400", description = "Campo obrigatório ausente (fromId, toId ou value)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class))),
+            @ApiResponse(responseCode = "404", description = "Alguma das Rendas Extras (fromId ou toId) não encontrada",
+                    content = @Content(schema = @Schema(implementation = ErrorResponseDto.class)))
+    })
+    @PostMapping("/transfer")
+    public ResponseEntity<ExtraIncomeTransferDto> transfer(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "JSON com campos fromId, toId e value (ex: { \"fromId\": \"uuidOrigem\", \"toId\": \"uuidDestino\", \"value\": 20.00 })",
+                    required = true,
+                    content = @Content(schema = @Schema(implementation = ExtraIncomeTransferRequestDto.class))
+            )
+            @Valid @RequestBody ExtraIncomeTransferRequestDto dto
+    ) {
+        ExtraIncomeTransferDto result = service.transfer(dto.getFromId(), dto.getToId(), dto.getValue());
+        return ResponseEntity.ok(result);
     }
 }

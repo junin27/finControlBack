@@ -131,18 +131,24 @@ public class BankService {
     public void clearIncomes(UUID bankId) {
         User currentUser = getCurrentUser();
         Bank bank = bankRepo.findByIdAndUserId(bankId, currentUser.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Banco não encontrado com ID: " + bankId + " ou não pertence ao usuário " + currentUser.getId()));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Banco não encontrado com ID: " + bankId +
+                                " ou não pertence ao usuário " + currentUser.getId()
+                ));
 
-        BigDecimal totalIncomes = incomeRepo.sumIncomeByBank(bankId);
+        // Chamada corrigida: agora passa também o usuário autenticado
+        BigDecimal totalIncomes = incomeRepo.sumIncomeByBank(bankId, currentUser);
         if (totalIncomes == null) {
             totalIncomes = BigDecimal.ZERO;
         }
 
-        incomeRepo.deleteByBankId(bankId); // Certifique-se que este método existe no incomeRepo
+        // Deleta todas as rendas extras daquele banco para o usuário
+        incomeRepo.deleteAllByUserAndBankId(currentUser, bankId);
 
         bank.setBalance(bank.getBalance().subtract(totalIncomes));
         bankRepo.save(bank);
-        log.info("Rendas do banco {} (ID: {}) limpas e saldo atualizado para o usuário {}", bank.getName(), bankId, currentUser.getId());
+        log.info("Rendas do banco {} (ID: {}) limpas e saldo atualizado para o usuário {}",
+                bank.getName(), bankId, currentUser.getId());
     }
 
     @Transactional
@@ -162,11 +168,23 @@ public class BankService {
     }
 
     private BankDto toDto(Bank b) {
-        BigDecimal totalIn = incomeRepo.sumIncomeByBank(b.getId());
-        totalIn = (totalIn == null) ? BigDecimal.ZERO : totalIn;
-        BigDecimal totalOut = expenseRepo.sumExpenseByBank(b.getId());
-        totalOut = (totalOut == null) ? BigDecimal.ZERO : totalOut;
+        // 1) Obter o usuário autenticado
+        User currentUser = getCurrentUser();
 
+        // 2) Somar todas as entradas (ExtraIncome) daquele banco para este usuário
+        BigDecimal totalIn = incomeRepo.sumIncomeByBank(b.getId(), currentUser);
+        if (totalIn == null) {
+            totalIn = BigDecimal.ZERO;
+        }
+
+        // 3) Somar todas as despesas (Expense) daquele banco para este usuário.
+        //    Suponho que expenseRepo tenha um método sumExpenseByBank(UUID bankId, User user).
+        BigDecimal totalOut = expenseRepo.sumExpenseByBank(b.getId(), currentUser);
+        if (totalOut == null) {
+            totalOut = BigDecimal.ZERO;
+        }
+
+        // 4) Montar o DTO com os valores já corrigidos
         return new BankDto(
                 b.getId(),
                 b.getName(),
@@ -178,6 +196,7 @@ public class BankService {
                 b.getUpdatedAt()
         );
     }
+
 
     @Transactional
     public BankTransferResponseDto transferBetweenBanks(BankTransferDto transferDto) {

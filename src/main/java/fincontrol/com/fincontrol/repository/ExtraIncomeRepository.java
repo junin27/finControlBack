@@ -1,11 +1,11 @@
 package fincontrol.com.fincontrol.repository;
 
 import fincontrol.com.fincontrol.model.ExtraIncome;
+import fincontrol.com.fincontrol.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -13,23 +13,41 @@ import java.util.UUID;
 
 public interface ExtraIncomeRepository extends JpaRepository<ExtraIncome, UUID> {
 
-    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM ExtraIncome e WHERE e.bank.id = :bankId")
-    BigDecimal sumIncomeByBank(@Param("bankId") UUID bankId);
+    // ---------------------------------------------------
+    // Soma de amount por banco (via relacionamento) e usuário
+    // ---------------------------------------------------
+    @Query("SELECT COALESCE(SUM(e.amount), 0) " +
+            "FROM ExtraIncome e " +
+            "WHERE e.bank.id = :bankId " +
+            "  AND e.user = :user")
+    BigDecimal sumIncomeByBank(
+            @Param("bankId") UUID bankId,
+            @Param("user")   User user
+    );
 
-    @Modifying
-    @Transactional
-    @Query("DELETE FROM ExtraIncome e WHERE e.bank.id = :bankId")
-    void deleteByBankId(@Param("bankId") UUID bankId);
-
-    List<ExtraIncome> findByBankId(UUID bankId);
-
-    List<ExtraIncome> findByUserId(UUID userId);
-
-    @Query("SELECT ei FROM ExtraIncome ei LEFT JOIN FETCH ei.bank WHERE ei.user.id = :userId")
-    List<ExtraIncome> findByUserIdWithBank(@Param("userId") UUID userId);
-
-    @Query("SELECT ei FROM ExtraIncome ei LEFT JOIN FETCH ei.bank WHERE ei.bank.id = :bankId AND ei.user.id = :userId")
-    List<ExtraIncome> findByBankIdAndUserIdWithBank(@Param("bankId") UUID bankId, @Param("userId") UUID userId);
+    // ---------------------------------------------------
+    // Deleta todas as ExtraIncome de um dado usuário e dado bankId
+    // ---------------------------------------------------
+    void deleteAllByUserAndBankId(User user, UUID bankId);
 
     Optional<ExtraIncome> findByIdAndUserId(UUID id, UUID userId);
+
+    // Se você também quiser manter o método que recebe diretamente o objeto User:
+
+    /**
+     * Soma do campo `amount` para todas as ExtraIncome com este bankId e pertencentes a este usuário.
+     */
+
+
+
+    // ---------------------------------------------------
+    // Outros métodos existentes (findAllByUserAndBankId, etc.)
+    // ---------------------------------------------------
+    List<ExtraIncome> findAllByUser(User user);
+    List<ExtraIncome> findAllByUserAndBankId(User user, UUID bankId);
+    List<ExtraIncome> findAllByUserAndCategoryId(User user, UUID categoryId);
+    Optional<ExtraIncome> findByIdAndUser(UUID id, User user);
+    long countByUser(User user);
+    void deleteAllByUser(User user);
+    void deleteAllByUserAndCategoryId(User user, UUID categoryId);
 }
