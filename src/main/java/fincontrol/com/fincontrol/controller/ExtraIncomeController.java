@@ -24,7 +24,7 @@ import java.util.UUID;
 
 @Tag(name = "ExtraIncome", description = "Endpoints para gerenciar Renda Extra (ExtraIncome)")
 @RestController
-@RequestMapping("/extraincome")
+@RequestMapping("/api/extra‐incomes")
 @Validated
 public class ExtraIncomeController {
 
