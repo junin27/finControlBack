@@ -9,9 +9,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
 import java.util.List;
-import java.util.Objects; // Para Objects.nonNull
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -34,7 +32,6 @@ public class ExtraIncomeService {
         this.bankRepo = bankRepo;
     }
 
-    // Método consistente para obter o usuário autenticado internamente, se necessário.
     private User getCurrentUser() {
         String principalName = SecurityContextHolder.getContext().getAuthentication().getName();
         try {
@@ -52,7 +49,6 @@ public class ExtraIncomeService {
 
     @Transactional
     public ExtraIncomeDto createIncome(UUID userId, ExtraIncomeDto dto) {
-        // O userId aqui é passado pelo controller. Valida se o usuário existe.
         User user = userRepo.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado com ID: " + userId));
 
@@ -63,16 +59,14 @@ public class ExtraIncomeService {
         income.setUser(user);
         income.setCategory(category);
         income.setAmount(dto.getAmount());
-        income.setDescription(dto.getDescription());
+        income.setName(dto.getName());
         income.setDate(dto.getDate());
 
         if (dto.getBankId() != null) {
             Bank bank = bankRepo.findByIdAndUserId(dto.getBankId(), userId)
                     .orElseThrow(() -> new ResourceNotFoundException("Banco não encontrado com ID: " + dto.getBankId() + " ou não pertence ao usuário."));
-
             income.setBank(bank);
-            bank.setBalance(bank.getBalance().add(dto.getAmount()));
-            bankRepo.save(bank);
+            // NÃO altere o saldo do banco aqui!
         }
 
         ExtraIncome savedIncome = extraRepo.save(income);
@@ -83,13 +77,9 @@ public class ExtraIncomeService {
     private ExtraIncomeDto convertToDto(ExtraIncome extraIncome) {
         ExtraIncomeDto dto = new ExtraIncomeDto();
         dto.setId(extraIncome.getId());
-        dto.setDescription(extraIncome.getDescription());
+        dto.setName(extraIncome.getName());
         dto.setAmount(extraIncome.getAmount());
         dto.setDate(extraIncome.getDate());
-        // Assumindo que ExtraIncome NÃO tem createdAt/updatedAt, conforme modelo fornecido.
-        // Se adicionar, inclua aqui.
-        // dto.setCreatedAt(extraIncome.getCreatedAt());
-        // dto.setUpdatedAt(extraIncome.getUpdatedAt());
 
         if (extraIncome.getCategory() != null) {
             dto.setCategoryId(extraIncome.getCategory().getId());
@@ -103,7 +93,7 @@ public class ExtraIncomeService {
 
         if (extraIncome.getUser() != null) {
             dto.setUserId(extraIncome.getUser().getId());
-            dto.setUserName(extraIncome.getUser().getName()); // Ajuste se o nome do campo/método for outro
+            dto.setUserName(extraIncome.getUser().getName());
         }
         return dto;
     }

@@ -1115,7 +1115,7 @@ Representa os dados detalhados de um cofre.
     -   `name` (String, opcional, max 100): Novo nome.
     -   `description` (String, opcional, max 255): Nova descrição.
     -   `currency` (String, opcional, max 10): Nova moeda.
-    *(Nota: Não altera `amount` ou `bankId`)*.
+        *(Nota: Não altera `amount` ou `bankId`)*.
 -   **Retorno Sucesso**: `200 OK` com `VaultDto` atualizado.
 -   **Erros Possíveis**: `400 Bad Request`, `401 Unauthorized`, `404 Not Found` (cofre/usuário), `500 Internal Server Error`.
 

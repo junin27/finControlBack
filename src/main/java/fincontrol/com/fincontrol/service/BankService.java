@@ -423,7 +423,7 @@ public class BankService {
 
         BankTransactionDetailsDto highestIncomeDto = null;
         if (highestIncomeEntity != null && highestIncomeEntity.getBank() != null) {
-            highestIncomeDto = new BankTransactionDetailsDto(highestIncomeEntity.getBank().getId(), highestIncomeEntity.getBank().getName(), highestIncomeEntity.getAmount(), highestIncomeEntity.getDescription());
+            highestIncomeDto = new BankTransactionDetailsDto(highestIncomeEntity.getBank().getId(), highestIncomeEntity.getBank().getName(), highestIncomeEntity.getAmount(), highestIncomeEntity.getName());
         }
 
         BankTransactionDetailsDto highestExpenseDto = null;

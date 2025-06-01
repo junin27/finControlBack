@@ -8,16 +8,15 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime; // Adicionado para createdAt/updatedAt
+import java.time.LocalDateTime;
 import java.util.UUID;
-// import java.lang.Long; // Import não é estritamente necessário para Long
 
 @Data
-@Schema(name = "ExtraIncomeResponseDto", description = "Dados de uma renda extra") // Renomeado para clareza, opcional
-public class ExtraIncomeDto { // Mantido o nome da classe como ExtraIncomeDto por consistência com seu uso
+@Schema(name = "ExtraIncomeResponseDto", description = "Dados de uma renda extra")
+public class ExtraIncomeDto {
 
-    @Schema(description = "ID da renda extra", example = "101")
-    private Long id; // <<< ADICIONADO E TIPO CORRETO (Long)
+    @Schema(description = "ID da renda extra", example = "39fa4c61-dfc5-4191-8571-f18073dc2e88")
+    private UUID id;
 
     @NotNull
     @Positive
@@ -29,11 +28,11 @@ public class ExtraIncomeDto { // Mantido o nome da classe como ExtraIncomeDto po
     private UUID categoryId;
 
     @Schema(description = "Nome da categoria da renda extra", example = "Salário")
-    private String categoryName; // <<< ADICIONADO
+    private String categoryName;
 
     @Size(max = 255)
     @Schema(description = "Descrição da renda extra", example = "Freelance")
-    private String description;
+    private String name;
 
     @NotNull
     @Schema(description = "Data da renda extra", example = "2025-05-31", requiredMode = Schema.RequiredMode.REQUIRED)
@@ -43,17 +42,17 @@ public class ExtraIncomeDto { // Mantido o nome da classe como ExtraIncomeDto po
     private UUID bankId;
 
     @Schema(description = "Nome do banco associado", example = "Banco Principal")
-    private String bankName; // <<< ADICIONADO
+    private String bankName;
 
     @Schema(description = "ID do usuário proprietário da renda extra")
-    private UUID userId; // <<< ADICIONADO
+    private UUID userId;
 
     @Schema(description = "Nome/identificador do usuário proprietário")
-    private String userName; // <<< ADICIONADO
+    private String userName;
 
     @Schema(description = "Data de criação do registro")
-    private LocalDateTime createdAt; // <<< ADICIONADO
+    private LocalDateTime createdAt;
 
     @Schema(description = "Data da última atualização do registro")
-    private LocalDateTime updatedAt; // <<< ADICIONADO
+    private LocalDateTime updatedAt;
 }

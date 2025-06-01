@@ -6,16 +6,15 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
-import java.util.UUID; // Para userId, se aplicável em outros contextos
-import java.lang.Long; // Para extraIncomeId
+import java.util.UUID;
 
 @Data
 @Schema(name = "ReceivableCreateDto", description = "Data for creating a new receivable account")
 public class ReceivableCreateDto {
 
     @NotNull(message = "Associated Extra Income ID is mandatory.")
-    @Schema(description = "ID of the associated Extra Income record", example = "101", requiredMode = Schema.RequiredMode.REQUIRED)
-    private Long extraIncomeId; // << ALTERADO PARA Long
+    @Schema(description = "ID of the associated Extra Income record", example = "39fa4c61-dfc5-4191-8571-f18073dc2e88", requiredMode = Schema.RequiredMode.REQUIRED)
+    private UUID extraIncomeId;
 
     @NotNull(message = "Receipt method is mandatory.")
     @Schema(description = "Method of receipt", example = "PIX", requiredMode = Schema.RequiredMode.REQUIRED)

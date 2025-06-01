@@ -3,7 +3,6 @@ package fincontrol.com.fincontrol.service;
 import fincontrol.com.fincontrol.dto.ExpenseCreateDto;
 import fincontrol.com.fincontrol.dto.ExpenseMassUpdateDto;
 import fincontrol.com.fincontrol.dto.ExpenseUpdateDto;
-import fincontrol.com.fincontrol.exception.InsufficientBalanceException;
 import fincontrol.com.fincontrol.exception.InvalidOperationException;
 import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
 import fincontrol.com.fincontrol.model.Bank;
@@ -66,20 +65,13 @@ public class ExpenseService {
         Expense expense = new Expense();
         expense.setName(dto.getName());
         expense.setDescription(dto.getDescription());
-        expense.setValue(dto.getValue()); // Assumindo que ExpenseCreateDto tem getValue()
+        expense.setValue(dto.getValue());
         expense.setExpenseDate(dto.getExpenseDate());
         expense.setCategory(category);
         expense.setUser(user);
 
         if (dto.getBankId() != null) {
             Bank bank = findBankByIdAndUser(dto.getBankId(), userId);
-            if (bank.getBalance().compareTo(dto.getValue()) < 0) {
-                log.warn("Tentativa de criar despesa com valor {} maior que o saldo {} do banco {} para o usuário {}",
-                        dto.getValue(), bank.getBalance(), bank.getId(), userId);
-                throw new InsufficientBalanceException("Saldo insuficiente no banco " + bank.getName() + " para cobrir a despesa de valor " + dto.getValue() + ".");
-            }
-            bank.setBalance(bank.getBalance().subtract(dto.getValue()));
-            bankRepository.save(bank);
             expense.setBank(bank);
         }
         Expense savedExpense = expenseRepository.save(expense);
@@ -89,14 +81,14 @@ public class ExpenseService {
 
     @Transactional(readOnly = true)
     public List<Expense> listAllByAuthenticatedUser(UUID userId) {
-        findUserById(userId); // Valida se o usuário existe
+        findUserById(userId);
         log.debug("Listando todas as despesas para o usuário {}", userId);
         return expenseRepository.findAllByUserId(userId);
     }
 
     @Transactional(readOnly = true)
     public Expense findByIdAndUserIdEnsureOwnership(UUID expenseId, UUID userId) {
-        findUserById(userId); // Valida se o usuário existe
+        findUserById(userId);
         return expenseRepository.findByIdAndUserId(expenseId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Despesa com ID " + expenseId + " não encontrada ou não pertence ao usuário."));
     }
@@ -151,7 +143,6 @@ public class ExpenseService {
             }
         }
 
-        // Lógica de atualização do banco e ajuste de saldos
         Bank newBank = null;
         if (dto.getBankId() != null) {
             newBank = findBankByIdAndUser(dto.getBankId(), userId);
@@ -161,26 +152,10 @@ public class ExpenseService {
                 (oldBankId != null && dto.getBankId() == null) ||
                 (oldBankId != null && dto.getBankId() != null && !oldBankId.equals(dto.getBankId()));
 
-        if (bankChanged || (expense.getValue().compareTo(oldValue) != 0 && (oldBank != null || newBank != null))) {
-            needsSave = true; // Alteração de banco ou valor com banco envolvido requer salvar
-            // Reverter o valor antigo do banco antigo, se existia
-            if (oldBank != null) {
-                oldBank.setBalance(oldBank.getBalance().add(oldValue));
-                bankRepository.save(oldBank);
-                log.debug("Saldo revertido no banco antigo {} (ID: {}): +{}", oldBank.getName(), oldBank.getId(), oldValue);
-            }
-            // Aplicar o novo valor (valor atualizado da despesa) ao novo banco, se existir
-            if (newBank != null) {
-                if (newBank.getBalance().compareTo(expense.getValue()) < 0) {
-                    throw new InsufficientBalanceException("Saldo insuficiente no novo banco " + newBank.getName() + " para cobrir a despesa atualizada de " + expense.getValue());
-                }
-                newBank.setBalance(newBank.getBalance().subtract(expense.getValue()));
-                bankRepository.save(newBank);
-                log.debug("Saldo atualizado no novo banco {} (ID: {}): -{}", newBank.getName(), newBank.getId(), expense.getValue());
-            }
+        if (bankChanged) {
+            needsSave = true;
         }
         expense.setBank(newBank);
-
 
         if (needsSave) {
             Expense updatedExpense = expenseRepository.save(expense);
@@ -196,19 +171,8 @@ public class ExpenseService {
         Expense expenseToDelete = expenseRepository.findByIdAndUserId(expenseId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Despesa (ID: " + expenseId + ") não encontrada ou não pertence ao usuário para exclusão."));
 
-        if (expenseToDelete.getBank() != null) {
-            Bank bank = expenseToDelete.getBank();
-            // Certifica-se de que o banco ainda pertence ao usuário antes de alterar o saldo
-            if (bank.getUser().getId().equals(userId)) {
-                bank.setBalance(bank.getBalance().add(expenseToDelete.getValue()));
-                bankRepository.save(bank);
-                log.info("Saldo do banco {} (ID: {}) revertido em {} devido à exclusão da despesa {}",
-                        bank.getName(), bank.getId(), expenseToDelete.getValue(), expenseId);
-            } else {
-                log.warn("Ao deletar despesa {}, o banco associado {} não pertence ao usuário {}. Saldo do banco não foi revertido.",
-                        expenseId, bank.getId(), userId);
-            }
-        }
+        // Removida alteração automática do saldo do banco
+
         expenseRepository.delete(expenseToDelete);
         log.info("Despesa (ID: {}) deletada para o usuário {}", expenseId, userId);
     }
@@ -257,28 +221,9 @@ public class ExpenseService {
     @Transactional
     public int deleteAllUserExpenses(UUID userId) {
         findUserById(userId);
-        // Antes de deletar todas as despesas, reverter os saldos dos bancos associados
-        // É importante buscar as despesas com as informações do banco
-        List<Expense> userExpenses = expenseRepository.findAllByUserIdWithBankDetails(userId); // Você precisará criar este método no ExpenseRepository
-        // Ex: @Query("SELECT e FROM Expense e LEFT JOIN FETCH e.bank WHERE e.user.id = :userId")
 
-        for (Expense expense : userExpenses) {
-            if (expense.getBank() != null) {
-                Bank bank = expense.getBank();
-                // Validação de segurança: o banco ainda pertence ao usuário?
-                if (bank.getUser().getId().equals(userId)) {
-                    bank.setBalance(bank.getBalance().add(expense.getValue()));
-                    bankRepository.save(bank);
-                    log.debug("Saldo do banco {} (ID: {}) revertido em {} ao deletar todas as despesas do usuário {}",
-                            bank.getName(), bank.getId(), expense.getValue(), userId);
-                } else {
-                    log.warn("Ao deletar todas as despesas do usuário {}, a despesa {} (ID: {}) estava associada ao banco {} que não pertence (mais) ao usuário. Saldo do banco não foi revertido.",
-                            userId, expense.getName(), expense.getId(), bank.getId());
-                }
-            }
-        }
         int deletedCount = expenseRepository.deleteAllByUserId(userId);
-        log.info("{} despesas do usuário {} foram deletadas e saldos bancários (quando aplicável) revertidos.", deletedCount, userId);
+        log.info("{} despesas do usuário {} foram deletadas.", deletedCount, userId);
         return deletedCount;
     }
 }
