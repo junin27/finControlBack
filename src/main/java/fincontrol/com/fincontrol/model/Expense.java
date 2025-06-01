@@ -1,5 +1,9 @@
 package fincontrol.com.fincontrol.model;
 
+// IMPORTAÇÕES ADICIONADAS
+import com.fasterxml.jackson.annotation.JsonIdentityInfo;
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -18,10 +22,15 @@ import java.util.UUID;
 @Entity
 @EntityListeners(AuditingEntityListener.class)
 @Table(name = "expenses")
+// ADICIONAR ESTA ANOTAÇÃO À CLASSE
+@JsonIdentityInfo(
+        generator = ObjectIdGenerators.PropertyGenerator.class,
+        property = "id" // "id" é o nome do campo de ID nesta entidade
+)
 public class Expense {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID) // Usar strategy = GenerationType.UUID
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @Column(nullable = false, length = 100)
@@ -33,7 +42,7 @@ public class Expense {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal value;
 
-    @Column(name = "expense_date", nullable = false) // Tornando obrigatório
+    @Column(name = "expense_date", nullable = false)
     private LocalDate expenseDate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -61,6 +70,5 @@ public class Expense {
         if (!StringUtils.hasText(this.description)) {
             this.description = "Campo não Informado pelo Usuário";
         }
-        // createdAt e updatedAt são gerenciados pelo AuditingEntityListener
     }
 }

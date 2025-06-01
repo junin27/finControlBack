@@ -31,13 +31,17 @@ public class JWTAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             if (tokenProvider.validateToken(token)) {
-                String username = tokenProvider.getUsernameFromToken(token);
-                // Sem papéis (authorities) – ajuste se precisar de roles
-                UsernamePasswordAuthenticationToken auth =
-                        new UsernamePasswordAuthenticationToken(username,
-                                null,
-                                Collections.emptyList());
-                SecurityContextHolder.getContext().setAuthentication(auth);
+                String userIdString = tokenProvider.getUserIdFromToken(token); // Pega o userId (String) do token
+
+                if (userIdString != null && !userIdString.isEmpty()) {
+                    // Usar o userIdString (String do UUID) como o principal.
+                    UsernamePasswordAuthenticationToken auth =
+                            new UsernamePasswordAuthenticationToken(
+                                    userIdString, // O principal agora é a String do UUID do usuário
+                                    null, // Credentials (não necessárias aqui, pois o token já foi validado)
+                                    Collections.emptyList()); // Authorities (papéis) - ajuste se necessário
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
             }
         }
         filterChain.doFilter(request, response);
