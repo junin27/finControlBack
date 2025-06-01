@@ -43,15 +43,34 @@ public class BillController {
 
     private UUID getAuthenticatedUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null) {
-            // This should ideally be handled by Spring Security returning 401
-            throw new ResourceNotFoundException("User not authenticated.");
+        if (authentication == null || !authentication.isAuthenticated() || authentication.getPrincipal() == null) {
+            // Idealmente, isso não deveria ser alcançado se o filtro JWT protegeu a rota
+            throw new ResourceNotFoundException("Nenhum usuário autenticado encontrado no contexto de segurança.");
         }
-        String userEmail = authentication.getName();
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("Authenticated user not found with email: " + userEmail));
-        return user.getId();
+
+        Object principal = authentication.getPrincipal();
+
+        if (!(principal instanceof String)) {
+            // Isso indica uma inconsistência entre o que o filtro JWT define como principal
+            // e o que este método espera.
+            throw new IllegalStateException("O principal da autenticação não é uma String (UserID) como esperado. Principal é do tipo: " + principal.getClass().getName());
+        }
+
+        String userIdString = (String) principal;
+
+        // Verificação adicional
+        if ("anonymousUser".equals(userIdString)) {
+            throw new ResourceNotFoundException("Operação não permitida para usuário anônimo.");
+        }
+
+        try {
+            return UUID.fromString(userIdString);
+        } catch (IllegalArgumentException e) {
+            // Isso aconteceria se o principal (vindo do token) não fosse um UUID válido em formato string.
+            throw new ResourceNotFoundException("ID do usuário autenticado ('" + userIdString + "') não é um UUID válido.");
+        }
     }
+
 
     @Operation(summary = "Create a new bill for the authenticated user")
     @ApiResponses({
