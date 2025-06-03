@@ -24,7 +24,11 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jjwt.version>0.11.2</jjwt.version>
         <lombok.version>1.18.38</lombok.version>
+        <!-- Adicionando propriedade para o diretório de saída do site -->
+        <site.output.directory>${project.build.directory}/modularity-report</site.output.directory>
     </properties>
+
+    <!-- Seção <repositories> foi REMOVIDA daqui -->
 
     <dependencies>
         <dependency>
@@ -43,7 +47,6 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
@@ -86,7 +89,6 @@
             <version>2.1.0</version>
         </dependency>
 
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
@@ -115,16 +117,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
-
-
     </dependencies>
-
-
 
     <build>
         <resources>
@@ -135,6 +132,26 @@
         </resources>
 
         <plugins>
+
+            <!--
+            Plugin dependency-management-metrics comentado
+            <plugin>
+                <groupId>com.github.ignatij</groupId>
+                <artifactId>dependency-management-metrics-maven-plugin</artifactId>
+                <version>1.0.17</version>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>dependency-metrics</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            -->
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -147,7 +164,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <version>3.11.0</version> <!-- Verifique a versão mais recente se desejar -->
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -158,14 +175,37 @@
                             <artifactId>lombok</artifactId>
                             <version>${lombok.version}</version>
                         </path>
-                        </annotationProcessorPaths>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
 
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                </plugin>
+            </plugin>
+
+            <!-- Adicionando configuração para o maven-site-plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-site-plugin</artifactId>
+                <version>3.12.1</version> <!-- Use uma versão recente do plugin -->
+                <configuration>
+                    <outputDirectory>${site.output.directory}</outputDirectory>
+                </configuration>
+            </plugin>
+
         </plugins>
     </build>
+
+    <reporting>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>jdepend-maven-plugin</artifactId>
+                <version>2.0</version>
+            </plugin>
+            <!-- Você pode adicionar outros plugins de relatório aqui também -->
+        </plugins>
+    </reporting>
+
 </project>

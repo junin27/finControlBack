@@ -1,5 +1,14 @@
 HELP.md
-target/
+# Ignorar tudo em target
+/target/*
+
+# Mas NÃO ignorar a pasta do relatório de modularidade
+!/target/modularity-report/
+# Ou, se quiser ser mais específico e a pasta tiver outros arquivos que não quer subir:
+# !/target/modularity-report/jdepend-report.html
+# !/target/modularity-report/css/
+# !/target/modularity-report/images/
+
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
