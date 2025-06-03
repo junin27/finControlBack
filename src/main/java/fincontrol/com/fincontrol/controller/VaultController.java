@@ -1,8 +1,6 @@
 package fincontrol.com.fincontrol.controller;
 
-import fincontrol.com.fincontrol.dto.VaultCreateDto;
-import fincontrol.com.fincontrol.dto.VaultDto;
-import fincontrol.com.fincontrol.dto.VaultUpdateDto;
+import fincontrol.com.fincontrol.dto.*;
 import fincontrol.com.fincontrol.exception.ResourceNotFoundException; // Se usar
 import fincontrol.com.fincontrol.model.User;
 import fincontrol.com.fincontrol.repository.UserRepository;
@@ -149,4 +147,35 @@ public class VaultController {
         vaultService.deleteVault(vaultId, userId);
         return ResponseEntity.noContent().build();
     }
+
+    @Operation(summary = "Realiza um saque de um cofre específico do usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Saque realizado com sucesso", content = @Content(schema = @Schema(implementation = VaultTransactionResponseDto.class))),
+            @ApiResponse(responseCode = "400", description = "Valor de saque inválido ou saldo insuficiente no cofre"),
+            @ApiResponse(responseCode = "404", description = "Cofre não encontrado ou não pertence ao usuário")
+    })
+    @PostMapping("/{vaultId}/withdraw")
+    public ResponseEntity<VaultTransactionResponseDto> withdrawFromVault(
+            @Parameter(description = "ID do cofre de onde sacar") @PathVariable UUID vaultId,
+            @Valid @RequestBody VaultTransactionRequestDto transactionDto) {
+        UUID userId = getAuthenticatedUserId();
+        VaultTransactionResponseDto response = vaultService.withdrawFromVault(vaultId, transactionDto, userId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "Realiza um depósito em um cofre específico do usuário autenticado")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Depósito realizado com sucesso", content = @Content(schema = @Schema(implementation = VaultTransactionResponseDto.class))),
+            @ApiResponse(responseCode = "400", description = "Valor de depósito inválido ou saldo insuficiente no banco vinculado (se houver)"),
+            @ApiResponse(responseCode = "404", description = "Cofre ou banco vinculado não encontrado ou não pertence ao usuário")
+    })
+    @PostMapping("/{vaultId}/deposit")
+    public ResponseEntity<VaultTransactionResponseDto> depositToVault(
+            @Parameter(description = "ID do cofre onde depositar") @PathVariable UUID vaultId,
+            @Valid @RequestBody VaultTransactionRequestDto transactionDto) {
+        UUID userId = getAuthenticatedUserId();
+        VaultTransactionResponseDto response = vaultService.depositToVault(vaultId, transactionDto, userId);
+        return ResponseEntity.ok(response);
+    }
+
 }
