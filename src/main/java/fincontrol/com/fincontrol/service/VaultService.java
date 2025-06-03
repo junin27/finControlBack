@@ -1,8 +1,6 @@
 package fincontrol.com.fincontrol.service;
 
-import fincontrol.com.fincontrol.dto.VaultCreateDto;
-import fincontrol.com.fincontrol.dto.VaultDto;
-import fincontrol.com.fincontrol.dto.VaultUpdateDto;
+import fincontrol.com.fincontrol.dto.*;
 import fincontrol.com.fincontrol.exception.InsufficientBalanceException;
 import fincontrol.com.fincontrol.exception.InvalidOperationException;
 import fincontrol.com.fincontrol.exception.ResourceNotFoundException;
@@ -19,6 +17,7 @@ import org.springframework.util.StringUtils;
 
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -176,4 +175,94 @@ public class VaultService {
                 vault.getUpdatedAt()
         );
     }
+
+
+    // Método auxiliar para buscar o cofre ou lançar exceção
+    private Vault getVaultByIdAndUserOrThrow(UUID vaultId, UUID userId) {
+        return vaultRepository.findByIdAndUserId(vaultId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cofre com ID " + vaultId + " não encontrado ou não pertence ao usuário."));
+    }
+
+    @Transactional
+    public VaultTransactionResponseDto withdrawFromVault(UUID vaultId, VaultTransactionRequestDto dto, UUID userId) {
+        User user = getUserById(userId); // Valida o usuário
+        Vault vault = getVaultByIdAndUserOrThrow(vaultId, userId);
+
+        BigDecimal amountToWithdraw = dto.getAmount();
+        if (amountToWithdraw.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("O valor do saque deve ser positivo.");
+        }
+
+        BigDecimal balanceBefore = vault.getAmount();
+
+        if (balanceBefore.compareTo(amountToWithdraw) < 0) {
+            throw new InsufficientBalanceException("Saldo insuficiente no cofre (ID: " + vaultId + "). Saldo atual: " + balanceBefore + ", Saque solicitado: " + amountToWithdraw);
+        }
+
+        vault.setAmount(balanceBefore.subtract(amountToWithdraw));
+        Vault updatedVault = vaultRepository.save(vault);
+        BigDecimal balanceAfter = updatedVault.getAmount();
+
+        // Se o cofre estiver vinculado a um banco, o valor sacado do cofre retorna ao banco.
+        if (vault.getBank() != null) {
+            Bank bank = getBankByIdAndUser(vault.getBank().getId(), user); // Re-busca para garantir consistência
+            bank.setBalance(bank.getBalance().add(amountToWithdraw));
+            bankRepository.save(bank);
+        }
+
+        return new VaultTransactionResponseDto(
+                vault.getId(),
+                vault.getName(),
+                "WITHDRAWAL",
+                amountToWithdraw,
+                balanceBefore,
+                balanceAfter,
+                vault.getCurrency(),
+                vault.getBank() != null ? vault.getBank().getId() : null,
+                vault.getBank() != null ? vault.getBank().getName() : null,
+                LocalDateTime.now()
+        );
+    }
+
+    @Transactional
+    public VaultTransactionResponseDto depositToVault(UUID vaultId, VaultTransactionRequestDto dto, UUID userId) {
+        User user = getUserById(userId); // Valida o usuário
+        Vault vault = getVaultByIdAndUserOrThrow(vaultId, userId);
+
+        BigDecimal amountToDeposit = dto.getAmount();
+        if (amountToDeposit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidOperationException("O valor do depósito deve ser positivo.");
+        }
+
+        BigDecimal balanceBefore = vault.getAmount();
+
+        // Se o cofre estiver vinculado a um banco, o valor depositado no cofre sai do banco.
+        if (vault.getBank() != null) {
+            Bank bank = getBankByIdAndUser(vault.getBank().getId(), user); // Re-busca para garantir consistência
+            if (bank.getBalance().compareTo(amountToDeposit) < 0) {
+                throw new InsufficientBalanceException("Saldo insuficiente no banco (ID: " + bank.getId() + ") para cobrir o depósito no cofre. Saldo do banco: " + bank.getBalance() + ", Depósito solicitado: " + amountToDeposit);
+            }
+            bank.setBalance(bank.getBalance().subtract(amountToDeposit));
+            bankRepository.save(bank);
+        }
+        // Se não estiver vinculado a um banco, o dinheiro "surge" no cofre (dinheiro em espécie, por exemplo)
+
+        vault.setAmount(balanceBefore.add(amountToDeposit));
+        Vault updatedVault = vaultRepository.save(vault);
+        BigDecimal balanceAfter = updatedVault.getAmount();
+
+        return new VaultTransactionResponseDto(
+                vault.getId(),
+                vault.getName(),
+                "DEPOSIT",
+                amountToDeposit,
+                balanceBefore,
+                balanceAfter,
+                vault.getCurrency(),
+                vault.getBank() != null ? vault.getBank().getId() : null,
+                vault.getBank() != null ? vault.getBank().getName() : null,
+                LocalDateTime.now()
+        );
+    }
+
 }
